@@ -1,5 +1,4 @@
 cradle:
   direct:
     arguments:
-      - -clear-package-db
       - -package-db /home/nr/asterius/ghc/_build/stage0/lib/package.conf.d
