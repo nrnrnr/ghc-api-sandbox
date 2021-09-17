@@ -3,20 +3,19 @@ module Main where
 import Control.Monad.IO.Class (liftIO)
 
 import GHC
---import GHC.Paths (libdir)
+import GHC.Paths (libdir)
 import GHC.Driver.Session ( defaultFatalMessager, defaultFlushOut )
 
---import GHC.IO.Handle.FD (stdout)
---import Outputable (printSDocLn, ppr, defaultUserStyle)
---import Pretty (Mode(PageMode))
+import GHC.IO.Handle
+import GHC.Utils.Outputable (printSDocLn, ppr, defaultUserStyle)
+import GHC.Utils.Ppr (Mode(PageMode))
 
 import System.Environment ( getArgs )
+import System.IO (stdout)
+import GHC.Plugins (defaultSDocContext)
+import GHC.Stg.Syntax (StgTopBinding)
+import GHC.CoreToStg (coreToStg)
 
-libdir :: String
-libdir = "/home/nr/asterius/ghc/_build/stage1/lib"
-
-
- 
 main :: IO SuccessFlag
 main = do
     args <- getArgs
@@ -42,17 +41,24 @@ translate pathname = do
   setTargets [target]
   load LoadAllTargets
 
-{-
 corify :: String -> GHC.Ghc CoreModule
 corify pathname =
   do coremod <- compileToCoreSimplified pathname
      dflags <- getSessionDynFlags
      let doc = ppr (cm_binds coremod)
-     liftIO $ printSDocLn PageMode dflags stdout (defaultUserStyle dflags) doc
+     liftIO $ printSDocLn defaultSDocContext (PageMode True) stdout doc
      return coremod
--}
 
-corify = undefined
+{-
+stgify :: GHC.Ghc CoreModule -> [StgTopBinding]
+stgify cm =
+    do dflags <- getSessionDynFlags
+       return $ bindings $ coreToStg dflags (cm_module cm) location program
+    where bindings (bs, _, _) = bs
+
+m :: ModLocation
+m = undefined
+-}
 
 {-
 hscDumpCmm :: HscEnv -> CgGuts -> ModLocation -> FilePath
