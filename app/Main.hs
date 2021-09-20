@@ -7,26 +7,40 @@ import GHC.Paths (libdir)
 import GHC.Driver.Session ( defaultFatalMessager, defaultFlushOut )
 
 import GHC.IO.Handle
-import GHC.Utils.Outputable (printSDocLn, ppr, defaultUserStyle)
+import GHC.Utils.Outputable (printSDocLn, ppr, defaultUserStyle, SDocContext)
 import GHC.Utils.Ppr (Mode(PageMode))
 
 import System.Environment ( getArgs )
 import System.IO (stdout)
-import GHC.Plugins (defaultSDocContext)
+--import GHC.Plugins (defaultSDocContext)
 import GHC.Stg.Syntax (StgTopBinding)
 import GHC.CoreToStg (coreToStg)
 
+libdir0 = "/home/nr/asterius/ghc/_build/stage0/lib"
+
 main :: IO SuccessFlag
 main = do
+    putStrLn $ "libdir == " ++ thelibdir
     args <- getArgs
     defaultErrorHandler defaultFatalMessager defaultFlushOut $ do
-      runGhc (Just libdir) $ do
+      runGhc (Just thelibdir) $ do
         dflags <- getSessionDynFlags
         setSessionDynFlags dflags
+--        targets <- mapM (\path -> guessTarget path Nothing Nothing) args
+--        setTargets $ targets
+--        mgraph <- depanal [] False
+--        mapM_ dumpSummary $ mgModSummaries mgraph
         -- flags <- mapM translate args
         --return $ mconcat flags
-        cores <- mapM corify args
+        -- cores <- mapM corify args
         return Succeeded
+  where thelibdir = libdir
+
+
+dumpSummary :: SDocContext -> ModSummary -> GHC.Ghc ()
+dumpSummary context summ =
+  liftIO $ printSDocLn context (PageMode {- True -}) stdout $ ppr summ
+
 
 instance Semigroup SuccessFlag where
   (<>) Succeeded Succeeded = Succeeded
@@ -37,16 +51,16 @@ instance Monoid SuccessFlag where
 
 translate :: String -> GHC.Ghc SuccessFlag
 translate pathname = do
-  target <- guessTarget pathname Nothing Nothing
+  target <- guessTarget pathname Nothing {- Nothing -}
   setTargets [target]
   load LoadAllTargets
 
-corify :: String -> GHC.Ghc CoreModule
-corify pathname =
+corify :: SDocContext -> String -> GHC.Ghc CoreModule
+corify context pathname =
   do coremod <- compileToCoreSimplified pathname
      dflags <- getSessionDynFlags
      let doc = ppr (cm_binds coremod)
-     liftIO $ printSDocLn defaultSDocContext (PageMode True) stdout doc
+     liftIO $ printSDocLn context (PageMode {- True -}) stdout doc
      return coremod
 
 {-
