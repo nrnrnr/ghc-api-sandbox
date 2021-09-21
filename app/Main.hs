@@ -3,11 +3,18 @@ module Main where
 import Control.Monad.IO.Class (liftIO)
 
 import GHC
+import GHC.CoreToStg
+import GHC.CoreToStg.Prep
 import GHC.Paths (libdir)
-import GHC.Driver.Session ( defaultFatalMessager, defaultFlushOut )
+import GHC.Driver.Main ( hscParse, hscTypecheckRename, hscDesugar
+                       , newHscEnv, hscSimplify )
+import GHC.Driver.Session ( defaultFatalMessager, defaultFlushOut, initSDocContext )
+import GHC.Driver.Types ( ModGuts(..) )
 
 import GHC.IO.Handle
-import GHC.Utils.Outputable (printSDocLn, ppr, defaultUserStyle, SDocContext)
+import GHC.Utils.Outputable ( printSDocLn, ppr, defaultUserStyle
+                            , SDocContext, initSDocContext
+                            )
 import GHC.Utils.Ppr (Mode(PageMode))
 
 import System.Environment ( getArgs )
@@ -15,6 +22,8 @@ import System.IO (stdout)
 --import GHC.Plugins (defaultSDocContext)
 import GHC.Stg.Syntax (StgTopBinding)
 import GHC.CoreToStg (coreToStg)
+import GHC.Builtin.Names (dATA_TYPE_EQUALITY)
+import GHC.Plugins (isDataTyCon)
 
 libdir0 = "/home/nr/asterius/ghc/_build/stage0/lib"
 
@@ -26,15 +35,69 @@ main = do
       runGhc (Just thelibdir) $ do
         dflags <- getSessionDynFlags
         setSessionDynFlags dflags
---        targets <- mapM (\path -> guessTarget path Nothing Nothing) args
---        setTargets $ targets
---        mgraph <- depanal [] False
---        mapM_ dumpSummary $ mgModSummaries mgraph
+        let sdctx = initSDocContext dflags defaultUserStyle
+        targets <- mapM (\path -> guessTarget path Nothing {- Nothing -}) args
+        setTargets $ targets
+        mgraph <- depanal [] False
+        mapM_ (dumpSummary sdctx) $ mgModSummaries mgraph
         -- flags <- mapM translate args
         --return $ mconcat flags
         -- cores <- mapM corify args
         return Succeeded
   where thelibdir = libdir
+
+
+----------------------------------------------------------------
+
+frontend :: DynFlags -> ModSummary -> IO ModGuts
+frontend dflags summary = do
+   env <- newHscEnv dflags
+   parsed <- hscParse env summary
+   (checked, _) <- hscTypecheckRename env summary parsed
+   hscDesugar env summary checked >>= hscSimplify env []
+
+{-
+stgify :: ModSummary -> Ghc.GHC [StgTopBinding]
+stgify summary =
+    do dflags <- getSessionDynFlags
+       env <- liftIO $ newHscEnv dflags
+       -- from hscGenHardCode
+       prepd_binds <- corePrepPgm hsc_env this_mod location
+                                   core_binds data_tycons
+  where this_mod = ms_mod summary
+        location = ms_location summary
+        nothing = hscGenHardCode
+-}
+
+stgify :: ModSummary -> ModGuts -> Ghc [StgTopBinding]
+stgify summary guts = do
+    dflags <- getSessionDynFlags
+    env <- liftIO $ newHscEnv dflags
+    (prepd_binds, _) <- liftIO $ corePrepPgm env this_mod location core_binds data_tycons
+    return $ fst $ coreToStg dflags (ms_mod summary) prepd_binds
+
+{-
+        -----------------  Convert to STG ------------------
+        (stg_binds, denv, (caf_ccs, caf_cc_stacks))
+            <- {-# SCC "CoreToStg" #-}
+               withTiming logger
+                   (text "CoreToStg"<+>brackets (ppr this_mod))
+                   (\(a, b, (c,d)) -> a `seqList` b `seq` c `seqList` d `seqList` ())
+                   (myCoreToStg logger dflags (hsc_IC hsc_env) False this_mod location prepd_binds)
+-}
+  where this_mod = mg_module guts
+        location = ms_location summary
+        core_binds = mg_binds guts
+        data_tycons = filter isDataTyCon tycons
+        tycons = mg_tcs guts
+
+--       return $ bindings $ coreToStg dflags (cm_module cm) location program
+--    where bindings (bs, _, _) = bs
+
+            
+
+
+
 
 
 dumpSummary :: SDocContext -> ModSummary -> GHC.Ghc ()
@@ -63,16 +126,7 @@ corify context pathname =
      liftIO $ printSDocLn context (PageMode {- True -}) stdout doc
      return coremod
 
-{-
-stgify :: GHC.Ghc CoreModule -> [StgTopBinding]
-stgify cm =
-    do dflags <- getSessionDynFlags
-       return $ bindings $ coreToStg dflags (cm_module cm) location program
-    where bindings (bs, _, _) = bs
 
-m :: ModLocation
-m = undefined
--}
 
 {-
 hscDumpCmm :: HscEnv -> CgGuts -> ModLocation -> FilePath
