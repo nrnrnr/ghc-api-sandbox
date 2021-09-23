@@ -20,7 +20,10 @@ import GHC.Utils.Ppr (Mode(PageMode))
 import System.Environment ( getArgs )
 import System.IO (stdout)
 --import GHC.Plugins (defaultSDocContext)
-import GHC.Stg.Syntax (StgTopBinding)
+--import GHC.Plugins (defaultSDocContext)
+--import GHC.Plugins (defaultSDocContext)
+--import GHC.Plugins (defaultSDocContext)
+import GHC.Stg.Syntax (StgTopBinding, pprGenStgTopBindings, initStgPprOpts)
 import GHC.CoreToStg (coreToStg)
 import GHC.Builtin.Names (dATA_TYPE_EQUALITY)
 import GHC.Plugins (isDataTyCon)
@@ -39,7 +42,10 @@ main = do
         targets <- mapM (\path -> guessTarget path Nothing {- Nothing -}) args
         setTargets $ targets
         mgraph <- depanal [] False
-        mapM_ (dumpSummary sdctx) $ mgModSummaries mgraph
+        mapM_ (\s -> dumpSummary sdctx s >>
+                     liftIO (putStrLn "..............") >>
+                     dumpStg sdctx s >>
+                     liftIO (putStrLn "-------------------")) $ mgModSummaries mgraph
         -- flags <- mapM translate args
         --return $ mconcat flags
         -- cores <- mapM corify args
@@ -97,6 +103,13 @@ stgify summary guts = do
             
 
 
+dumpStg :: SDocContext -> ModSummary -> GHC.Ghc ()
+dumpStg context summ = do
+  dflags <- getSessionDynFlags
+  guts <- liftIO $ frontend dflags summ
+  stg <- stgify summ guts
+  liftIO $ printSDocLn context (PageMode {- True -}) stdout $
+         pprGenStgTopBindings (initStgPprOpts dflags) stg
 
 
 
