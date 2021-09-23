@@ -24,6 +24,9 @@ import GHC.CoreToStg (coreToStg)
 import GHC.Builtin.Names (dATA_TYPE_EQUALITY)
 import GHC.Plugins (isDataTyCon)
 
+import StgReifyStack
+
+
 libdir0 = "/home/nr/asterius/ghc/_build/stage0/lib"
 
 main :: IO ()
