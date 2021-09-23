@@ -19,10 +19,6 @@ import GHC.Utils.Ppr (Mode(PageMode))
 
 import System.Environment ( getArgs )
 import System.IO (stdout)
---import GHC.Plugins (defaultSDocContext)
---import GHC.Plugins (defaultSDocContext)
---import GHC.Plugins (defaultSDocContext)
---import GHC.Plugins (defaultSDocContext)
 import GHC.Stg.Syntax (StgTopBinding, pprGenStgTopBindings, initStgPprOpts)
 import GHC.CoreToStg (coreToStg)
 import GHC.Builtin.Names (dATA_TYPE_EQUALITY)
@@ -30,7 +26,7 @@ import GHC.Plugins (isDataTyCon)
 
 libdir0 = "/home/nr/asterius/ghc/_build/stage0/lib"
 
-main :: IO SuccessFlag
+main :: IO ()
 main = do
     putStrLn $ "libdir == " ++ thelibdir
     args <- getArgs
@@ -46,10 +42,6 @@ main = do
                      liftIO (putStrLn "..............") >>
                      dumpStg sdctx s >>
                      liftIO (putStrLn "-------------------")) $ mgModSummaries mgraph
-        -- flags <- mapM translate args
-        --return $ mconcat flags
-        -- cores <- mapM corify args
-        return Succeeded
   where thelibdir = libdir
 
 
@@ -62,46 +54,17 @@ frontend dflags summary = do
    (checked, _) <- hscTypecheckRename env summary parsed
    hscDesugar env summary checked >>= hscSimplify env []
 
-{-
-stgify :: ModSummary -> Ghc.GHC [StgTopBinding]
-stgify summary =
-    do dflags <- getSessionDynFlags
-       env <- liftIO $ newHscEnv dflags
-       -- from hscGenHardCode
-       prepd_binds <- corePrepPgm hsc_env this_mod location
-                                   core_binds data_tycons
-  where this_mod = ms_mod summary
-        location = ms_location summary
-        nothing = hscGenHardCode
--}
-
 stgify :: ModSummary -> ModGuts -> Ghc [StgTopBinding]
 stgify summary guts = do
     dflags <- getSessionDynFlags
     env <- liftIO $ newHscEnv dflags
     (prepd_binds, _) <- liftIO $ corePrepPgm env this_mod location core_binds data_tycons
     return $ fst $ coreToStg dflags (ms_mod summary) prepd_binds
-
-{-
-        -----------------  Convert to STG ------------------
-        (stg_binds, denv, (caf_ccs, caf_cc_stacks))
-            <- {-# SCC "CoreToStg" #-}
-               withTiming logger
-                   (text "CoreToStg"<+>brackets (ppr this_mod))
-                   (\(a, b, (c,d)) -> a `seqList` b `seq` c `seqList` d `seqList` ())
-                   (myCoreToStg logger dflags (hsc_IC hsc_env) False this_mod location prepd_binds)
--}
   where this_mod = mg_module guts
         location = ms_location summary
         core_binds = mg_binds guts
         data_tycons = filter isDataTyCon tycons
         tycons = mg_tcs guts
-
---       return $ bindings $ coreToStg dflags (cm_module cm) location program
---    where bindings (bs, _, _) = bs
-
-            
-
 
 dumpStg :: SDocContext -> ModSummary -> GHC.Ghc ()
 dumpStg context summ = do
@@ -116,29 +79,6 @@ dumpStg context summ = do
 dumpSummary :: SDocContext -> ModSummary -> GHC.Ghc ()
 dumpSummary context summ =
   liftIO $ printSDocLn context (PageMode {- True -}) stdout $ ppr summ
-
-
-instance Semigroup SuccessFlag where
-  (<>) Succeeded Succeeded = Succeeded
-  (<>) _ _ = Failed
-
-instance Monoid SuccessFlag where
-  mempty = Succeeded
-
-translate :: String -> GHC.Ghc SuccessFlag
-translate pathname = do
-  target <- guessTarget pathname Nothing {- Nothing -}
-  setTargets [target]
-  load LoadAllTargets
-
-corify :: SDocContext -> String -> GHC.Ghc CoreModule
-corify context pathname =
-  do coremod <- compileToCoreSimplified pathname
-     dflags <- getSessionDynFlags
-     let doc = ppr (cm_binds coremod)
-     liftIO $ printSDocLn context (PageMode {- True -}) stdout doc
-     return coremod
-
 
 
 {-
