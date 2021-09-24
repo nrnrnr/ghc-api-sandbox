@@ -8,21 +8,22 @@ import GHC.CoreToStg.Prep
 import GHC.Paths (libdir)
 import GHC.Driver.Main ( hscParse, hscTypecheckRename, hscDesugar
                        , newHscEnv, hscSimplify )
-import GHC.Driver.Session ( defaultFatalMessager, defaultFlushOut, initSDocContext )
-import GHC.Driver.Types ( ModGuts(..) )
+import GHC.Driver.Session ( defaultFatalMessager, defaultFlushOut )
 
 import GHC.IO.Handle
 import GHC.Utils.Outputable ( printSDocLn, ppr, defaultUserStyle
-                            , SDocContext, initSDocContext
+                            , SDocContext, 
                             )
 import GHC.Utils.Ppr (Mode(PageMode))
+import GHC.Utils.Misc (fstOf3)
 
 import System.Environment ( getArgs )
 import System.IO (stdout)
 import GHC.Stg.Syntax (StgTopBinding, pprGenStgTopBindings, initStgPprOpts)
 import GHC.CoreToStg (coreToStg)
-import GHC.Builtin.Names (dATA_TYPE_EQUALITY)
-import GHC.Plugins (isDataTyCon)
+import GHC.Driver.Session (initSDocContext)
+import GHC.Plugins (isDataTyCon, fstOf3)
+import GHC.Unit.Module.ModGuts ( ModGuts(..) )
 
 import StgReifyStack
 
@@ -38,7 +39,7 @@ main = do
         dflags <- getSessionDynFlags
         setSessionDynFlags dflags
         let sdctx = initSDocContext dflags defaultUserStyle
-        targets <- mapM (\path -> guessTarget path Nothing {- Nothing -}) args
+        targets <- mapM (\path -> guessTarget path Nothing Nothing) args
         setTargets $ targets
         mgraph <- depanal [] False
         mapM_ (\s -> dumpSummary sdctx s >>
@@ -61,8 +62,8 @@ stgify :: ModSummary -> ModGuts -> Ghc [StgTopBinding]
 stgify summary guts = do
     dflags <- getSessionDynFlags
     env <- liftIO $ newHscEnv dflags
-    (prepd_binds, _) <- liftIO $ corePrepPgm env this_mod location core_binds data_tycons
-    return $ fst $ coreToStg dflags (ms_mod summary) prepd_binds
+    prepd_binds <- liftIO $ corePrepPgm env this_mod location core_binds data_tycons
+    return $ fstOf3 $ coreToStg dflags (ms_mod summary) (ms_location summary) prepd_binds
   where this_mod = mg_module guts
         location = ms_location summary
         core_binds = mg_binds guts
@@ -74,14 +75,14 @@ dumpStg context summ = do
   dflags <- getSessionDynFlags
   guts <- liftIO $ frontend dflags summ
   stg <- stgify summ guts
-  liftIO $ printSDocLn context (PageMode {- True -}) stdout $
+  liftIO $ printSDocLn context (PageMode True) stdout $
          pprGenStgTopBindings (initStgPprOpts dflags) stg
 
 
 
 dumpSummary :: SDocContext -> ModSummary -> GHC.Ghc ()
 dumpSummary context summ =
-  liftIO $ printSDocLn context (PageMode {- True -}) stdout $ ppr summ
+  liftIO $ printSDocLn context (PageMode True) stdout $ ppr summ
 
 
 {-
