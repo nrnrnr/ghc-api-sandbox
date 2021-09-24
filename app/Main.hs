@@ -24,7 +24,7 @@ import GHC.Driver.Session (initSDocContext)
 import GHC.Plugins (isDataTyCon, fstOf3)
 import GHC.Unit.Module.ModGuts ( ModGuts(..) )
 
-import StgReifyStack
+--import StgReifyStack
 
 
 libdir = "/home/nr/asterius/ghc/_build/stage1/lib"
