@@ -1,0 +1,3 @@
+cradle:
+  direct:
+    arguments: ["-package-env", "env93", "-package-id", "ghc-9.3"]
