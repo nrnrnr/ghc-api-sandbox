@@ -5,7 +5,6 @@ import Control.Monad.IO.Class (liftIO)
 import GHC
 import GHC.CoreToStg
 import GHC.CoreToStg.Prep
-import GHC.Paths (libdir)
 import GHC.Driver.Main ( hscParse, hscTypecheckRename, hscDesugar
                        , newHscEnv, hscSimplify )
 import GHC.Driver.Session ( defaultFatalMessager, defaultFlushOut )
@@ -28,7 +27,7 @@ import GHC.Unit.Module.ModGuts ( ModGuts(..) )
 import StgReifyStack
 
 
-libdir0 = "/home/nr/asterius/ghc/_build/stage0/lib"
+libdir = "/home/nr/asterius/ghc/_build/stage1/lib"
 
 main :: IO ()
 main = do
