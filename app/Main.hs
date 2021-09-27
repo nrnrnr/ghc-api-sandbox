@@ -5,6 +5,7 @@ import Control.Monad.IO.Class (liftIO)
 import GHC
 import GHC.CoreToStg
 import GHC.CoreToStg.Prep
+import GHC.Data.Stream hiding (mapM)
 import GHC.Driver.Main ( hscParse, hscTypecheckRename, hscDesugar
                        , newHscEnv, hscSimplify )
 import GHC.Driver.Session ( defaultFatalMessager, defaultFlushOut )
@@ -77,6 +78,20 @@ dumpStg context summ = do
   liftIO $ printSDocLn context (PageMode True) stdout $
          pprGenStgTopBindings (initStgPprOpts dflags) stg
 
+dumpCmm :: SDocContext -> ModSummary -> GHC.Ghc ()
+dumpCmm context summ = do
+  dflags <- getSessionDynFlags
+  guts <- liftIO $ frontend dflags summ
+  stg <- stgify summ guts
+  asmout <- undefined -- stream ThWarningAndDeprecationPragmas
+  return ()
+
+collectAll :: Monad m => Stream m a b -> m ([a], b)
+collectAll = gobble . runStream
+    where gobble (Done b) = return ([], b)
+          gobble (Effect e) = e >>= gobble
+          gobble (Yield a s) = do (as, b) <- gobble s
+                                  return (a:as, b)
 
 
 dumpSummary :: SDocContext -> ModSummary -> GHC.Ghc ()
