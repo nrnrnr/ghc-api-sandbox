@@ -1,3 +1,4 @@
 cradle:
   direct:
-    arguments: ["-package-env", "env93", "-package-id", "ghc-9.3"]
+#    arguments: ["-package-env", "env93", "-package-id", "ghc-9.3"]
+    arguments: ["-package-env", "-", "-clear-package-db", "-package-db", "/home/nr/asterius/ghc/_build/stage0/lib/package.conf.d", "-package-id", "ghc-9.3"]
