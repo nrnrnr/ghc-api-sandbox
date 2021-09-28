@@ -57,7 +57,8 @@ main = do
         mapM_ (\s -> dumpSummary sdctx s >>
                      liftIO (putStrLn "..............") >>
                      dumpStg sdctx s >>
-                     liftIO (putStrLn "-------------------")) $ mgModSummaries mgraph
+                     liftIO (putStrLn "-------------------") >>
+                     dumpCmm sdctx s) $ mgModSummaries mgraph
   where thelibdir = id libdir
 
 
