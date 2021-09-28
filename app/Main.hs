@@ -9,7 +9,7 @@ import GHC.CoreToStg
 import GHC.CoreToStg.Prep
 import GHC.Data.Stream hiding (mapM)
 import GHC.Driver.Main ( hscParse, hscTypecheckRename, hscDesugar
-                       , newHscEnv, hscSimplify )
+                       , hscSimplify )
 import GHC.Driver.Session ( defaultFatalMessager, defaultFlushOut )
 
 import GHC.IO.Handle
@@ -37,6 +37,7 @@ import GHC.Types.CostCentre (emptyCollectedCCs)
 import GHC.Types.IPE (emptyInfoTableProvMap)
 import GHC.Cmm (CmmGroup, GenCmmDecl(..), CmmGraph(..))
 import GHC.Platform (genericPlatform, Platform (Platform))
+import GHC (GhcMonad(getSession))
 
 
 libdir = "/home/nr/asterius/ghc/_build/stage1/lib"
@@ -57,14 +58,13 @@ main = do
                      liftIO (putStrLn "..............") >>
                      dumpStg sdctx s >>
                      liftIO (putStrLn "-------------------")) $ mgModSummaries mgraph
-  where thelibdir = libdir
+  where thelibdir = id libdir
 
 
 ----------------------------------------------------------------
 
-frontend :: DynFlags -> ModSummary -> IO ModGuts
-frontend dflags summary = do
-   env <- newHscEnv dflags
+frontend :: DynFlags -> HscEnv -> ModSummary -> IO ModGuts
+frontend dflags env summary = do
    parsed <- hscParse env summary
    (checked, _) <- hscTypecheckRename env summary parsed
    hscDesugar env summary checked >>= hscSimplify env []
@@ -72,7 +72,7 @@ frontend dflags summary = do
 stgify :: ModSummary -> ModGuts -> Ghc [StgTopBinding]
 stgify summary guts = do
     dflags <- getSessionDynFlags
-    env <- liftIO $ newHscEnv dflags
+    env <- getSession
     prepd_binds <- liftIO $ corePrepPgm env this_mod location core_binds data_tycons
     return $ fstOf3 $ coreToStg dflags (ms_mod summary) (ms_location summary) prepd_binds
   where this_mod = mg_module guts
@@ -84,7 +84,8 @@ stgify summary guts = do
 dumpStg :: SDocContext -> ModSummary -> GHC.Ghc ()
 dumpStg context summ = do
   dflags <- getSessionDynFlags
-  guts <- liftIO $ frontend dflags summ
+  env <- getSession
+  guts <- liftIO $ frontend dflags env summ
   stg <- stgify summ guts
   liftIO $ printSDocLn context (PageMode True) stdout $
          pprGenStgTopBindings (initStgPprOpts dflags) stg
@@ -92,7 +93,8 @@ dumpStg context summ = do
 dumpCmm :: SDocContext -> ModSummary -> GHC.Ghc ()
 dumpCmm context summ = do
   dflags <- getSessionDynFlags
-  guts <- liftIO $ frontend dflags summ
+  env <- getSession
+  guts <- liftIO $ frontend dflags env summ
   stg <- stgify summ guts
   logger <- getLogger
   let infotable = emptyInfoTableProvMap
@@ -112,7 +114,7 @@ dumpCmm context summ = do
         decl (CmmData {}) = putStrLn "(data section, not dumped)"
         decl (CmmProc h label registers graph) = do
           pprout context $ pdoc genericPlatform h
-          id $ pprout context label
+          pprout context label
           putStr "global registers" >> pprout context registers
           pprout context $ pdoc genericPlatform graph
           putStrLn "####################################"
