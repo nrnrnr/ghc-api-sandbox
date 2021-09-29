@@ -10,7 +10,10 @@ import GHC.CoreToStg.Prep
 import GHC.Data.Stream hiding (mapM)
 import GHC.Driver.Main ( hscParse, hscTypecheckRename, hscDesugar
                        , hscSimplify )
-import GHC.Driver.Session ( defaultFatalMessager, defaultFlushOut )
+import GHC.Driver.Session ( defaultFatalMessager, defaultFlushOut
+                          , initSDocContext
+                          )
+
 
 import GHC.IO.Handle
 import GHC.Utils.Outputable ( printSDocLn, ppr, defaultUserStyle
@@ -27,7 +30,6 @@ import System.IO (stdout)
 import GHC.Stg.Syntax (StgTopBinding, pprGenStgTopBindings, initStgPprOpts)
 import GHC.Stg.FVs
 import GHC.CoreToStg (coreToStg)
-import GHC.Driver.Session (initSDocContext)
 import GHC.Plugins (isDataTyCon, fstOf3)
 import GHC.Unit.Module.ModGuts ( ModGuts(..) )
 
@@ -35,8 +37,8 @@ import StgToCmmLite (codeGen)
 import GHC.Types.HpcInfo (HpcInfo(NoHpcInfo), emptyHpcInfo)
 import GHC.Types.CostCentre (emptyCollectedCCs)
 import GHC.Types.IPE (emptyInfoTableProvMap)
-import GHC.Cmm (CmmGroup, GenCmmDecl(..), CmmGraph(..))
-import GHC.Platform (genericPlatform, Platform (Platform))
+import GHC.Cmm (CmmGroup, GenCmmDecl(..), CmmGraph(..), Section(..))
+import GHC.Platform (Platform (Platform))
 import GHC (GhcMonad(getSession))
 
 
@@ -107,17 +109,24 @@ dumpCmm context summ = do
       liftIO $
       collectAll $
       codeGen logger dflags (ms_mod summ) infotable tycons ccs stg' hpcinfo
-  liftIO $ mapM_ group groups
-  where group :: CmmGroup -> IO ()
-        group = mapM_ decl
-        decl :: (OutputableP Platform d, OutputableP Platform h, OutputableP Platform g) =>
-                GenCmmDecl d h g -> IO ()
-        decl (CmmData {}) = putStrLn "(data section, not dumped)"
-        decl (CmmProc h label registers graph) = do
-          pprout context $ pdoc genericPlatform h
+  liftIO $ mapM_ (group (targetPlatform dflags)) groups
+  where group :: Platform -> CmmGroup -> IO ()
+        group platform = mapM_ (decl platform)
+        decl :: ( OutputableP Platform d
+                , OutputableP Platform h
+                , OutputableP Platform g
+                )
+                => Platform
+                -> GenCmmDecl d h g
+                -> IO ()
+        decl platform (CmmData (Section sty label) d) = do
+          putStrLn $ show label ++ "(" ++ show sty ++ "):"
+          pprout context $ pdoc platform d
+        decl platform (CmmProc h label registers graph) = do
+          pprout context $ pdoc platform h
           pprout context label
           putStr "global registers" >> pprout context registers
-          pprout context $ pdoc genericPlatform graph
+          pprout context $ pdoc platform graph
           putStrLn "####################################"
                      
 
