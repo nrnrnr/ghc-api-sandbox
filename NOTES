@@ -1,0 +1,7 @@
+code generation:
+  - initHpc (coverage)
+  - initCostCentres
+
+Key functions:
+  - cgTopBinding
+  - cgTopRhs{,Con,Closure} --- generate code for a constructed value or a closure
