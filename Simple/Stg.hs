@@ -15,11 +15,11 @@ data Lambda = LF { free :: [Name], upd :: UpdateFlag, args :: [Name], lam_body :
 
 data UpdateFlag = Updatable | ReEntrant | SingleEntry
 
-data Exp = Let    { let_bind :: Bind,    let_body :: Exp }
-         | LetRec { let_binds :: [Bind], let_body :: Exp }
-         | Case   { scrutinee :: Exp, case_alts :: Alts }
-         | Funcall Name [Atom]
-         | Construct DataCon [Atom]
+data Exp = Let    { let_bind :: Bind,    let_body :: Exp } -- allocate closure
+         | LetRec { let_binds :: [Bind], let_body :: Exp } -- allocate closures
+         | Case   { scrutinee :: Exp, case_alts :: Alts } -- force and choose
+         | Funcall Name [Atom] -- tail call
+         | Construct DataCon [Atom] -- returns
          | Primitive Prim [Atom]
          | Literal Literal
 
