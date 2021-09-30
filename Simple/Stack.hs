@@ -1,6 +1,6 @@
 module Simple.Stack where
 
-import GHC.Types.Name
+import GHC.Types.Name (Name)
 
 newtype DataCon = DataCon Name
 newtype Prim = Prim Name
