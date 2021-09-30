@@ -18,7 +18,11 @@ data UpdateFlag = Updatable | ReEntrant | SingleEntry
 
 data Function = Function { frame_layout :: Frame, fun_body :: Code }
 
-newtype Slot = Slot Name -- identifies a slot in the stack frame
+data Slot = Slot Name Metrics -- identifies a slot in the stack frame
+
+data Metrics = Metrics { met_size :: Int, met_alignment :: Int }
+  -- size and alignment in bytes
+
 data Frame = Frame [Slot]
 
 data Code
