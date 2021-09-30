@@ -17,7 +17,7 @@ data UpdateFlag = Updatable | ReEntrant | SingleEntry
 
 data Exp = Let    { let_bind :: Bind,    let_body :: Exp } -- allocate closure
          | LetRec { let_binds :: [Bind], let_body :: Exp } -- allocate closures
-         | Case   { scrutinee :: Exp, case_alts :: Alts } -- force and choose
+         | Case   { scrutinee :: Exp, case_alts :: [Alt] } -- force and choose
          | Funcall Name [Atom] -- tail call
          | Construct DataCon [Atom] -- returns
          | Primitive Prim [Atom]
@@ -25,7 +25,11 @@ data Exp = Let    { let_bind :: Bind,    let_body :: Exp } -- allocate closure
 
 data Atom = Name Name | Lit Literal
 
-data Alts = AlgAlts [(Pattern, Exp)] Default
+data Alt = Alt AltCon [Atom] Exp
+
+data AltCon = DataAlt DataCon
+            | LitAlt Literal
+            | DEFAULT
 
 data Pattern = ConPat DataCon [Name]
 
