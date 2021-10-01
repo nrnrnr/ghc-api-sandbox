@@ -4,15 +4,18 @@ import Prelude hiding ((<>))
 
 import Data.List   ( intersperse )
 
+import GHC.Stg.Syntax (StgOp(..))
 import GHC.Utils.Outputable
 
 import Simple.Stg
+import GHC.Stg.Syntax (StgOp)
+import Simple.Stack (Code(result))
 
-instance Outputable UpdateFlag where
-    ppr u = char $ case u of
-                       ReEntrant   -> 'r'
-                       Updatable   -> 'u'
-                       SingleEntry -> 's'
+--instance Outputable UpdateFlag where
+--    ppr u = char $ case u of
+--                       ReEntrant   -> 'r'
+--                       Updatable   -> 'u'
+--                       SingleEntry -> 's'
 
 instance Outputable Atom where
   ppr = pprStgArg
@@ -63,22 +66,24 @@ pprStgExpr e = case e of
              ]
 
    -- Don't indent for a single case alternative.
-   Case expr [alt]
+   Case expr result [alt]
       -> sep [ sep [ text "case"
                    , nest 4 (hsep [ ppr expr
                                   ])
                    , text "of"
+                   , ppr result
                    , char '{'
                    ]
              , ppr alt
              , char '}'
              ]
 
-   Case expr alts
+   Case expr result alts
       -> sep [ sep [ text "case"
                    , nest 4 (hsep [ ppr expr
                                   ])
                    , text "of"
+                   , ppr result
                    , char '{'
                    ]
              , nest 2 (vcat (map ppr alts))
@@ -97,10 +102,10 @@ pprStgAlt (Alt con params expr)
       altPattern = (hsep [ppr con, sep (map ppr params), text "->"])
       indent = True
 
-instance Outputable AltCon where
-  ppr (DataAlt dc) = ppr dc
-  ppr (LitAlt lit) = ppr lit
-  ppr DEFAULT      = text "__DEFAULT"
+---instance Outputable AltCon where
+---  ppr (DataAlt dc) = ppr dc
+---  ppr (LitAlt lit) = ppr lit
+---  ppr DEFAULT      = text "__DEFAULT"
 
 
 instance Outputable Lambda where
@@ -114,11 +119,18 @@ pprLambda rhs = case rhs of
                     ])
               4 (ppr body)
 
+instance Outputable StgOp where
+  ppr = pprStgOp
 
-instance Outputable DataCon where
-  ppr (DataCon x) = ppr x
+pprStgOp :: StgOp -> SDoc
+pprStgOp (StgPrimOp  op)   = ppr op
+pprStgOp (StgPrimCallOp op)= ppr op
+pprStgOp (StgFCallOp op _) = ppr op
 
-instance Outputable Prim where
-  ppr (Prim x) = ppr x
+--instance Outputable DataCon where
+--  ppr (DataCon x) = ppr x
+
+--instance Outputable Prim where
+--  ppr (Prim x) = ppr x
 
 
