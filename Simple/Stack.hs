@@ -42,7 +42,7 @@ data Code
   | Tailcall { fun :: Name
              , args :: [Atom]
              }
-  | Assign Register SLE Code
+  | Assign Register SLE Code -- assign a register with no call or allocation
   | Return Register
 
 -- design question: should Code carry a list of live registers with it?
