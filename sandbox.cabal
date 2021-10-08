@@ -27,7 +27,7 @@ executable sandbox
     -- Modules included in this executable, other than Main.
     other-modules:  StgToCmmLite, StackLang, Simple.Stg, Simple.Stack,
                     Simple.Stg.Outputable,
-                    Simple.ImportStg
+                    Simple.ImportStg, Simple.Codegen
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
