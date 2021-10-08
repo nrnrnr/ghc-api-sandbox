@@ -8,9 +8,6 @@ import GHC.Stg.Syntax (StgOp(..))
 import GHC.Utils.Outputable
 
 import Simple.Stg
-import GHC.Stg.Syntax (StgOp)
-import Simple.Stack (Code(result))
-import Simple.Stg (Rhs(Lambda))
 
 --instance Outputable UpdateFlag where
 --    ppr u = char $ case u of
@@ -115,7 +112,7 @@ instance Outputable Rhs where
 pprRhs :: Rhs -> SDoc
 pprRhs rhs = case rhs of
    Lambda ext upd_flag args body
-      -> hang (hsep [ (ppr ext)
+      -> hang (hsep [ ppr ext
                     , char '\\' <> ppr upd_flag, brackets (interppSP args)
                     ])
               4 (ppr body)
