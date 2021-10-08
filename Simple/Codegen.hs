@@ -28,6 +28,8 @@ expr :: T.Register -> S.Exp -> T.Code -> T.Code
 expr dest e k =
   case e of
     S.Literal v -> assign $ T.Literal v
+    S.Primitive p args -> assign $ T.Primitive p args
+    S.Construct c args -> assign $ T.Construct c args
 
   where assign sle = T.Assign dest sle k
 

@@ -1,9 +1,18 @@
 module Simple.Stack where
 
-import GHC.Types.Name (Name)
+import GHC.Core.DataCon (DataCon)
+import GHC.Stg.Syntax (StgOp, UpdateFlag(..))
 
-newtype DataCon = DataCon Name
-newtype Prim = Prim Name
+-- import GHC.Types.Name (Name)
+
+import Simple.Common (Atom(..), Name)
+
+-- type Name = Id
+
+
+type Prim = StgOp
+
+
 
 newtype Register = Register Name
 
@@ -14,7 +23,7 @@ data Bind name = Bind { lhs :: name, rhs :: Lambda }
 
 data Lambda = LF { free :: [Name], upd :: UpdateFlag, lam_args :: [Name], code :: Function }
 
-data UpdateFlag = Updatable | ReEntrant | SingleEntry
+--data UpdateFlag = Updatable | ReEntrant | SingleEntry
 
 data Function = Function { frame_layout :: Frame, fun_body :: Code }
 
@@ -61,8 +70,6 @@ data Forcity
   = Forced -- appears as scrutinee of case expression or other context where
            -- we know statically that the *result* will be evaluated
   | Unforced -- result of call might not be forced
-
-data Atom = Name Name | Lit Literal
 
 data Alts = AlgAlts [(Pattern, Code)] Default
 

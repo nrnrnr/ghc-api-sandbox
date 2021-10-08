@@ -1,9 +1,15 @@
-module Simple.Stg where
+module Simple.Stg (
+   module Simple.Stg,
+   Atom(..)
+) where
 
 import GHC.Core (AltCon)
 import GHC.Core.DataCon (DataCon)
 import GHC.Stg.Syntax (StgOp, UpdateFlag(..))
 import GHC.Types.Var
+
+import Simple.Common (Atom(..))
+
 
 type Name = Id
 
@@ -28,8 +34,6 @@ data Exp = Let    { let_bind :: Bind,    let_body :: Exp } -- allocate closure
          | Construct DataCon [Atom] -- returns
          | Primitive Prim [Atom]
          | Literal Literal
-
-data Atom = Name Name | Lit Literal
 
 data Alt = Alt AltCon [Name] Exp
 

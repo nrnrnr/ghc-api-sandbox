@@ -59,6 +59,7 @@ alt ::  (XRhsClosure pass ~ DIdSet, BinderP pass ~ Id, XLet pass ~ XLetNoEscape 
     => GenStgAlt pass -> S.Alt
 alt (con, args, rhs) = S.Alt con args (expr rhs)
 
+arg :: StgArg -> S.Atom
 arg (StgVarArg x) = S.Name x
 arg (StgLitArg c) = S.Lit (simpleLit c)
 
