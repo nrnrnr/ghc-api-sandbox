@@ -41,11 +41,35 @@ import GHC.Cmm (CmmGroup, GenCmmDecl(..), CmmGraph(..), Section(..))
 import GHC.Platform (Platform (Platform))
 import GHC (GhcMonad(getSession))
 
+import qualified Simple.ImportStg as I
+import Simple.Stg.Outputable ()
 
 libdir = "/home/nr/asterius/ghc/_build/stage1/lib"
 
 main :: IO ()
-main = do
+main = showSimpleImport
+
+showSimpleImport :: IO ()
+showSimpleImport = do
+    args <- getArgs
+    defaultErrorHandler defaultFatalMessager defaultFlushOut $ do
+      runGhc (Just thelibdir) $ do
+        dflags <- getSessionDynFlags
+        setSessionDynFlags dflags
+        let sdctx = initSDocContext dflags defaultUserStyle
+        targets <- mapM (\path -> guessTarget path Nothing Nothing) args
+        setTargets $ targets
+        mgraph <- depanal [] False
+        mapM_ (\s -> dumpSummary sdctx s >>
+                     liftIO (putStrLn "..............") >>
+                     dumpStg sdctx s >>
+                     liftIO (putStrLn "-------------------") >>
+                     dumpImportedStg sdctx s) $ mgModSummaries mgraph
+  where thelibdir = libdir
+
+
+showStdCmm :: IO ()
+showStdCmm = do
     putStrLn $ "libdir == " ++ thelibdir
     args <- getArgs
     defaultErrorHandler defaultFatalMessager defaultFlushOut $ do
@@ -62,6 +86,16 @@ main = do
                      liftIO (putStrLn "-------------------") >>
                      dumpCmm sdctx s) $ mgModSummaries mgraph
   where thelibdir = id libdir
+
+dumpImportedStg :: SDocContext -> ModSummary -> GHC.Ghc ()
+dumpImportedStg context summ = do
+  dflags <- getSessionDynFlags
+  env <- getSession
+  guts <- liftIO $ frontend dflags env summ
+  stg <- stgify summ guts
+  let simple = I.stgToSimpleStg $ annTopBindingsFreeVars stg
+  liftIO $ printSDocLn context (PageMode True) stdout $ ppr simple
+
 
 
 ----------------------------------------------------------------

@@ -10,6 +10,7 @@ import GHC.Utils.Outputable
 import Simple.Stg
 import GHC.Stg.Syntax (StgOp)
 import Simple.Stack (Code(result))
+import Simple.Stg (Rhs(Lambda))
 
 --instance Outputable UpdateFlag where
 --    ppr u = char $ case u of
@@ -108,16 +109,17 @@ pprStgAlt (Alt con params expr)
 ---  ppr DEFAULT      = text "__DEFAULT"
 
 
-instance Outputable Lambda where
-  ppr = pprLambda
+instance Outputable Rhs where
+  ppr = pprRhs
 
-pprLambda :: Lambda -> SDoc
-pprLambda rhs = case rhs of
-   LF ext upd_flag args body
+pprRhs :: Rhs -> SDoc
+pprRhs rhs = case rhs of
+   Lambda ext upd_flag args body
       -> hang (hsep [ (ppr ext)
                     , char '\\' <> ppr upd_flag, brackets (interppSP args)
                     ])
               4 (ppr body)
+   RhsCon con args -> hsep (ppr con : map ppr args)
 
 instance Outputable StgOp where
   ppr = pprStgOp
@@ -134,3 +136,5 @@ pprStgOp (StgFCallOp op _) = ppr op
 --  ppr (Prim x) = ppr x
 
 
+instance Outputable Program where
+    ppr (Program bs) = vcat (map ppr bs)

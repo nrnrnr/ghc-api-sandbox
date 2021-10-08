@@ -28,11 +28,13 @@ binding  (StgRec    bs)  = map (\(l, r) -> S.Bind l (rhs r)) bs
 
 
 rhs :: (XRhsClosure pass ~ DIdSet, BinderP pass ~ Id, XLet pass ~ XLetNoEscape pass)
-    => GenStgRhs pass -> S.Lambda
+    => GenStgRhs pass -> S.Rhs
 
-rhs r@(StgRhsClosure fvs cc updfl args body) = S.LF free (flag updfl) args (expr body)
+rhs r@(StgRhsClosure fvs cc updfl args body) =
+    S.Lambda free (flag updfl) args (expr body)
   where free = dVarSetElems fvs
-rhs (StgRhsCon {}) = error "no top-level constructed data"
+rhs (StgRhsCon ccs con cnumber tickish args) = S.RhsCon con (map arg args)
+    
 
 expr :: (XRhsClosure pass ~ DIdSet, BinderP pass ~ Id, XLet pass ~ XLetNoEscape pass)
      => GenStgExpr pass -> S.Exp

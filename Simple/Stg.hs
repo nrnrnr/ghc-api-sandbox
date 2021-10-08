@@ -14,9 +14,10 @@ type Prim = StgOp
 
 data Program = Program [Bind]
 
-data Bind = Bind { lhs :: Name, rhs :: Lambda }
+data Bind = Bind { lhs :: Name, rhs :: Rhs }
 
-data Lambda = LF { free :: [Name], upd :: UpdateFlag, args :: [Name], lam_body :: Exp }
+data Rhs = Lambda { free :: [Name], upd :: UpdateFlag, args :: [Name], lam_body :: Exp }
+         | RhsCon DataCon [Atom]
 
 -- data UpdateFlag = Updatable | ReEntrant | SingleEntry
 
