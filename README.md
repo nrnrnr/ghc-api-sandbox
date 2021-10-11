@@ -1,42 +1,26 @@
 ## Introduction
 
-This is a small app meant to use the GHC API to translate a `.hs` file
-into STG (and eventually C--).  It is compiled against GHC HEAD,
-commit d99fc2508204c59cfc83d8a68718cf930ccc74b2.
+This repository holds prototype code that is meant to model, at a high
+level, what is happening in GHC's `StgToCmm` tree.
 
-## Issue
+At the moment I (@nrnrnr) am treating it as a personal project, so I
+am not curating the commit history.  It's a mess.
 
-The app builds, but when running, it panics.
+The prototype changes rapidly, and I don't expect to keep this README
+up to date.
 
-I tried a very similar app compiled against the 9.0 API.
-Some function calls had to be changed, but the 9.0 version dumped out
-STG code in the style of `-ddump-stg`, as expected.
+## Things that are here
 
-Here's evidence of failure:
+  - Module `Simple.Stg` models the STG language more or less as it
+    appears in the 1992 paper.
 
-```
-nr@homedog ~/a/sandbox> cabal v1-build
-Resolving dependencies...
-Configuring sandbox-0.1.0.0...
-Preprocessing executable 'sandbox' for sandbox-0.1.0.0..
-Building executable 'sandbox' for sandbox-0.1.0.0..
-[1 of 1] Compiling Main             ( app/Main.hs, dist/build/sandbox/sandbox-tmp/Main.o ) [Source file changed]
-Linking dist/build/sandbox/sandbox ...
-nr@homedog ~/a/sandbox> ./dist/build/sandbox/sandbox programs/Church.hs
-libdir == /home/nr/asterius/ghc/_build/stage1/lib
-ModSummary {
-   ms_hs_hash = 8ed607a72dd3968f1e65123b865b8572
-   ms_mod = Church,
-   ms_textual_imps = [(Nothing, Prelude)]
-   ms_srcimps = []
-}
-..............
-sandbox: panic! (the 'impossible' happened)
-  GHC version 9.3.20210918:
-        unsafeGetHomeUnit: No home unit
+  - Module `Simple.Stack` describes a simple language like the STG
+    language, but with these changes:
 
-Please report this as a GHC bug:  https://www.haskell.org/ghc/reportabug
-```
+      * The stack is reified (in the form of each function's stack frame).
+      * Variables may be explicitly in registers or on the stack.
+      * The language is imperative and includes instructions for
+        spilling and reloading.
 
-A cursory investigation suggests that the home unit would have been
-set by `setSessionDynFlags`.  So I'm confused.
+  - Module `Simple.Codegen` will eventually include a translation.
+
