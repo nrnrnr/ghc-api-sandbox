@@ -78,14 +78,14 @@ showStdCmm = do
         setSessionDynFlags dflags
         let sdctx = initSDocContext dflags defaultUserStyle
         targets <- mapM (\path -> guessTarget path Nothing Nothing) args
-        setTargets $ targets
+        setTargets targets
         mgraph <- depanal [] False
         mapM_ (\s -> dumpSummary sdctx s >>
                      liftIO (putStrLn "..............") >>
                      dumpStg sdctx s >>
                      liftIO (putStrLn "-------------------") >>
                      dumpCmm sdctx s) $ mgModSummaries mgraph
-  where thelibdir = id libdir
+  where thelibdir = libdir
 
 dumpImportedStg :: SDocContext -> ModSummary -> GHC.Ghc ()
 dumpImportedStg context summ = do

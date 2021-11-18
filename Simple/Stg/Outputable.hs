@@ -118,8 +118,8 @@ pprRhs rhs = case rhs of
               4 (ppr body)
    RhsCon con args -> hsep (ppr con : map ppr args)
 
-instance Outputable StgOp where
-  ppr = pprStgOp
+--instance Outputable StgOp where -- now exported by HEAD
+--  ppr = pprStgOp
 
 pprStgOp :: StgOp -> SDoc
 pprStgOp (StgPrimOp  op)   = ppr op

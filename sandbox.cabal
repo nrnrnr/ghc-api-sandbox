@@ -21,6 +21,9 @@ maintainer:         nr@cs.tufts.edu
 -- category:
 extra-source-files: CHANGELOG.md
 
+program-default-options
+  ghc-options: -haddock
+
 executable sandbox
     main-is:          Main.hs
 

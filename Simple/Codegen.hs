@@ -7,7 +7,8 @@ import GHC.Core (AltCon)
 import GHC.Core.DataCon (DataCon)
 import GHC.Stg.Syntax (StgOp, UpdateFlag(..))
 import GHC.Types.Var
-import GHC.Types.Unique.Supply
+import GHC.Prelude (undefined)
+import GHC.Types.Unique.Supply (UniqSM, MonadUnique(getUniqueM))
 
 {-
 [Note register allocation]
@@ -21,17 +22,26 @@ virtual registers onto real machine resources.
 
 type Gen a = UniqSM a -- needs stack thingy too?
 
+getReg :: Gen T.Register
+getReg = fmap T.Register getUniqueM 
+
+
 -- |What to do with the value of an expression
 data Context = Reg T.Register | Return
 
-expr :: T.Register -> S.Exp -> T.Code -> T.Code
-expr dest e k =
+expr :: T.Forcity -> T.Register -> S.Exp -> T.Code -> Gen T.Code
+expr forcity dest e k =
   case e of
     S.Literal v -> assign $ T.Literal v
     S.Primitive p args -> assign $ T.Primitive p args
     S.Construct c args -> assign $ T.Construct c args
-
-  where assign sle = T.Assign dest sle k
+    S.Funcall f args -> do
+        r <- getReg
+        return $ T.Funcall r forcity f args (T.Cont k)
+    S.Case e result alts -> do
+        return $ error "case not implemented"
+        
+  where assign sle = return $ T.Assign dest sle k
 
 {-
 

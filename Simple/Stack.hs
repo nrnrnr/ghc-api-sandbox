@@ -4,6 +4,7 @@ import GHC.Core.DataCon (DataCon)
 import GHC.Stg.Syntax (StgOp, UpdateFlag(..))
 
 -- import GHC.Types.Name (Name)
+import GHC.Types.Unique
 
 import Simple.Common (Atom(..), Name)
 
@@ -14,7 +15,7 @@ type Prim = StgOp
 
 
 
-newtype Register = Register Name
+newtype Register = Register Unique
 
 
 data Program = Program [Bind Name]
@@ -51,8 +52,8 @@ data Code
   | Tailcall { fun :: Name
              , args :: [Atom]
              }
-  | Assign Register SLE Code -- assign a register with no call or allocation
-  | Return Register
+  | Assign !Register !SLE Code -- assign a register with no call or allocation
+  | Return !Register
 
 -- design question: should Code carry a list of live registers with it?
 

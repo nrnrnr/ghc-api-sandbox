@@ -85,7 +85,7 @@ codeGen :: Logger
         -> Stream IO CmmGroup (CStub, ModuleLFInfos)       -- Output as a stream, so codegen can
                                        -- be interleaved with output
 
-codeGen logger dflags this_mod ip_map@(InfoTableProvMap (UniqMap denv) _) data_tycons
+codeGen logger dflags this_mod ip_map@(InfoTableProvMap { provDC = UniqMap denv }) data_tycons
         cost_centre_info stg_binds hpc_info
   = do  {     -- cg: run the code generator, and yield the resulting CmmGroup
               -- Using an IORef to store the state is a bit crude, but otherwise
@@ -156,7 +156,7 @@ codeGen logger dflags this_mod ip_map@(InfoTableProvMap (UniqMap denv) _) data_t
                 | gopt Opt_OmitInterfacePragmas dflags
                 = emptyNameEnv
                 | otherwise
-                = mkNameEnv (Prelude.map extractInfo (eltsUFM cg_id_infos))
+                = mkNameEnv (Prelude.map extractInfo (nonDetEltsUFM cg_id_infos))
 
         ; return (foreign_stub, generatedInfo)
         }
