@@ -1,9 +1,11 @@
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE GADTs #-}
 
 module Main where
 
-import Control.Monad.IO.Class (liftIO)
+
+import Control.Monad (when)
+
+import DotCfg
 
 import GHC
 import GHC.CoreToStg
@@ -15,38 +17,37 @@ import GHC.Driver.Session ( defaultFatalMessager, defaultFlushOut
                           , initSDocContext
                           )
 
-
-import GHC.IO.Handle
-import GHC.Utils.Outputable {- ( printSDocLn, ppr, defaultUserStyle
+import GHC.Utils.Outputable ( printSDocLn, ppr, defaultUserStyle
                             , SDocContext
                             , Outputable
                             , OutputableP
                             , pdoc
-                            , SDoc
-                            , text
-                            ) -}
+--                            , SDoc
+--                            , text
+                            )
 import GHC.Utils.Ppr (Mode(PageMode))
 import GHC.Utils.Misc (fstOf3)
+import GHC.Plugins (isDataTyCon)
+import GHC.Types.HpcInfo (emptyHpcInfo)
+
+import GHC.Cmm.Dataflow.Graph(NonLocal)
+import GHC.Cmm.Node()
+import GHC.CmmToAsm.CFG()
 
 import System.Environment ( getArgs )
 import System.IO (stdout)
 import GHC.Stg.Syntax (StgTopBinding, pprGenStgTopBindings, initStgPprOpts)
 import GHC.Stg.FVs
-import GHC.CoreToStg (coreToStg)
-import GHC.Plugins (isDataTyCon, fstOf3)
 import GHC.Unit.Module.ModGuts ( ModGuts(..) )
 
 import StgToCmmLite (codeGen)
-import GHC.Types.HpcInfo (HpcInfo(NoHpcInfo), emptyHpcInfo)
 import GHC.Types.CostCentre (emptyCollectedCCs)
 import GHC.Types.IPE (emptyInfoTableProvMap)
-import GHC.Cmm (CmmGroup, GenCmmDecl(..), GenCmmGraph(..), CmmGraph(..), Section(..))
-import GHC.Cmm.Dataflow.Block
-import GHC.Cmm.Dataflow.Graph
-import GHC.Cmm.Dataflow.Label
-import GHC.Platform (Platform (Platform))
-import GHC (GhcMonad(getSession))
+import GHC.Cmm (CmmGroup, GenCmmDecl(..), GenCmmGraph(..), Section(..))
+import GHC.Platform (Platform)
+--import GHC (GhcMonad(getSession))
 
+libdir :: String
 libdir = "/home/nr/asterius/ghc/_build/stage1/lib"
 
 main :: IO ()
@@ -54,7 +55,7 @@ main = showStdCmm
 
 showStdCmm :: IO ()
 showStdCmm = do
-    putStrLn $ "libdir == " ++ thelibdir
+    --putStrLn $ "libdir == " ++ thelibdir
     args <- getArgs
     defaultErrorHandler defaultFatalMessager defaultFlushOut $ do
       runGhc (Just thelibdir) $ do
@@ -64,17 +65,17 @@ showStdCmm = do
         targets <- mapM (\path -> guessTarget path Nothing Nothing) args
         setTargets targets
         mgraph <- depanal [] False
-        mapM_ (\s -> dumpSummary sdctx s >>
-                     liftIO (putStrLn "..............") >>
-                     dumpStg sdctx s >>
-                     liftIO (putStrLn "-------------------") >>
+        mapM_ (\s -> --dumpSummary sdctx s >>
+                     --liftIO (putStrLn "/* .............. */") >>
+                     --dumpStg sdctx s >>
+                     --liftIO (putStrLn "/* ------------------- */") >>
                      dumpCmm sdctx s) $ mgModSummaries mgraph
   where thelibdir = libdir
 
 ----------------------------------------------------------------
 
 frontend :: DynFlags -> HscEnv -> ModSummary -> IO ModGuts
-frontend dflags env summary = do
+frontend _dflags env summary = do
    parsed <- hscParse env summary
    (checked, _) <- hscTypecheckRename env summary parsed
    hscDesugar env summary checked >>= hscSimplify env []
@@ -112,7 +113,7 @@ dumpCmm context summ = do
   let ccs = emptyCollectedCCs
   let stg' = annTopBindingsFreeVars stg
   let hpcinfo = emptyHpcInfo False
-  (groups, (stub, infos)) <-
+  (groups, (_stub, _infos)) <-
       liftIO $
       collectAll $
       codeGen logger dflags (ms_mod summ) infotable tycons ccs stg' hpcinfo
@@ -121,26 +122,16 @@ dumpCmm context summ = do
         group platform = mapM_ (decl platform)
         decl :: ( OutputableP Platform d
                 , OutputableP Platform h
+                , NonLocal node
                 )
                 => Platform
                 -> GenCmmDecl d h (GenCmmGraph node)
                 -> IO ()
-        decl platform (CmmData (Section sty label) d) = do
+        decl platform (CmmData (Section sty label) d) = when False $ do
           putStrLn $ show label ++ "(" ++ show sty ++ "):"
           pprout context $ pdoc platform d
-        decl platform (CmmProc h label registers graph) = do
+        decl _platform (CmmProc _h _label _registers graph) = do
           printSDocLn context (PageMode True) stdout $ dotCFG graph
-                     
-
-dotCFG :: GenCmmGraph node -> SDoc
-dotCFG (CmmGraph { g_graph = GMany NothingO blockmap NothingO }) =
-    -- blockmap is foldable and traversable
-    text "digraph {" $$
-    nest 2 (edges $$ nodes) $$
-    text "}"
-  where edges = empty
-        nodes = empty
-
 
 
 
