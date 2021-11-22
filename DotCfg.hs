@@ -33,19 +33,30 @@ dotCFG title (g@CmmGraph { g_graph = GMany NothingO blockmap NothingO, g_entry =
     $$
     text "}"
   where edges = vcat $ map dotEdge $ mapFoldMapWithKey outedges blockmap
-        nodes = vcat $ map (dotNode dmap) $ mapKeys blockmap
+        nodes = vcat $ map(dotNode headers dmap) $ mapKeys blockmap
         outedges :: Label -> Block node C C -> [(Label, Label)]
         outedges label block = map (label,) $ successors block
-        dmap = dominators g
---        headers = loopHeaders
+        dmap = dominatorMap g
+        dominators lbl = mapFindWithDefault setEmpty lbl dmap
+        dominates lbl blockname = setMember lbl (dominators blockname)
+        headers :: LabelSet
+        headers = foldMap headersPointedTo blockmap
+        headersPointedTo block =
+            setFromList [label | label <- successors block,
+                                          dominates label (entryLabel block)]
+            
 
-dotNode :: LabelMap DominatorSet -> Label -> SDoc
-dotNode dmap label =
+dotNode :: LabelSet -> LabelMap DominatorSet -> Label -> SDoc
+dotNode headers dmap label =
   dotName label <> space <>
-  text "[label=" <> doubleQuotes dotlabel <> space <> text "]"
+  text "[label=" <> doubleQuotes dotlabel <> headermark <> text "]"
                 <> text ";"
   where dotlabel = dotName label <> text ": " <> 
                    (hcat $ intersperse (comma<>space) $ map dotName $ setElems $ getFact nodeset label dmap)
+        headermark = if setMember label headers then
+                         space <> text "peripheries=2"
+                     else
+                         empty
 
 dotEdge :: (Label, Label) -> SDoc
 dotEdge (from, to) = dotName from <> text "->" <> dotName to <> text ";"
@@ -53,9 +64,13 @@ dotEdge (from, to) = dotName from <> text "->" <> dotName to <> text ";"
 dotName :: Label -> SDoc
 dotName label = text ("L" ++ shortdigits)
   where shortdigits = case show label of
-                        'L' : digits -> show ((read digits :: Int) `mod` 512)
+                        'L' : digits -> show ((read digits :: Int) `mod` dmod)
                         urk -> urk
+        dmod = 10 ^ ndigits
 
+
+ndigits :: Int -- ^ Number of digits of a label to show
+ndigits = 3
 
 --targets :: Block CmmNode e C -> [Label]
 ----targets _ = [mkHooplLabel 99]
@@ -82,11 +97,8 @@ transfer block facts =
         entry = entryLabel block
         incoming = getFact nodeset entry facts
 
--- analyzeCmmFwd :: DataflowLattice f -> TransferFun f -> CmmGraph -> FactBase f -> FactBase f
-
-dominators :: node ~ CmmNode => GenCmmGraph node -> LabelMap DominatorSet
-dominators g = 
+dominatorMap :: node ~ CmmNode => GenCmmGraph node -> LabelMap DominatorSet
+dominatorMap g = 
   analyzeCmmFwd nodeset transfer g startFacts
       where startFacts = mkFactBase nodeset [(g_entry g, setSingleton (g_entry g))]
---            CmmGraph { g_graph = GMany NothingO blockmap NothingO } = g
 
