@@ -19,10 +19,14 @@ import GHC.Cmm.Dataflow.Collections (IsMap(mapFoldMapWithKey, mapKeys))
                      
 
 dotCFG :: forall node . NonLocal node => GenCmmGraph node -> SDoc
-dotCFG (CmmGraph { g_graph = GMany NothingO blockmap NothingO }) =
+dotCFG (CmmGraph { g_graph = GMany NothingO blockmap NothingO, g_entry = entry }) =
     -- blockmap is foldable and traversable
     text "digraph {" $$
-    nest 2 (edges $$ nodes) $$
+    nest 2 (edges $$
+            nodes $$
+            text "entry [shape=\"plaintext\", label=\"entry\"];" $$
+            text "entry -> " <> dotName entry <> text ";")
+    $$
     text "}"
   where edges = vcat $ map dotEdge $ mapFoldMapWithKey outedges blockmap
         nodes = vcat $ map dotNode $ mapKeys blockmap

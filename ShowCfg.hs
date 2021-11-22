@@ -130,9 +130,8 @@ dumpCmm context summ = do
         decl platform (CmmData (Section sty label) d) = when False $ do
           putStrLn $ show label ++ "(" ++ show sty ++ "):"
           pprout context $ pdoc platform d
-        decl _platform (CmmProc _h _label _registers graph) = do
+        decl _platform (CmmProc _h _entry _registers graph) = do
           printSDocLn context (PageMode True) stdout $ dotCFG graph
-
 
 
 pprout :: Outputable a => SDocContext -> a -> IO ()
