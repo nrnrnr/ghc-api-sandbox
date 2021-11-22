@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module Main where
 
@@ -31,7 +32,7 @@ import GHC.Plugins (isDataTyCon)
 import GHC.Types.HpcInfo (emptyHpcInfo)
 
 import GHC.Cmm.Dataflow.Graph(NonLocal)
-import GHC.Cmm.Node()
+import GHC.Cmm.Node
 import GHC.CmmToAsm.CFG()
 
 import System.Environment ( getArgs )
@@ -123,6 +124,7 @@ dumpCmm context summ = do
         decl :: ( OutputableP Platform d
                 , OutputableP Platform h
                 , NonLocal node
+                , node ~ CmmNode
                 )
                 => Platform
                 -> GenCmmDecl d h (GenCmmGraph node)
@@ -130,8 +132,9 @@ dumpCmm context summ = do
         decl platform (CmmData (Section sty label) d) = when False $ do
           putStrLn $ show label ++ "(" ++ show sty ++ "):"
           pprout context $ pdoc platform d
-        decl _platform (CmmProc _h _entry _registers graph) = do
-          printSDocLn context (PageMode True) stdout $ dotCFG graph
+        decl _platform (CmmProc _h entry _registers graph) = do
+          printSDocLn context (PageMode True) stdout $ dotCFG (ppr entry) graph
+
 
 
 pprout :: Outputable a => SDocContext -> a -> IO ()
