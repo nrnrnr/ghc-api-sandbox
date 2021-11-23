@@ -9,7 +9,7 @@ where
 
 import Data.List
 import Prelude hiding ((<>))
-import AltFastDom
+import FastDom
 
 import GHC.Cmm
 import GHC.Cmm.Dataflow

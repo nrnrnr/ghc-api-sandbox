@@ -49,7 +49,7 @@ executable showcfg
     other-modules:  StgToCmmLite, StackLang, Simple.Stg, Simple.Stack,
                     Simple.Stg.Outputable,
                     Simple.ImportStg, Simple.Codegen, Simple.Common,
-                    DotCfg, FastDom, AltFastDom
+                    DotCfg, FastDom
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
