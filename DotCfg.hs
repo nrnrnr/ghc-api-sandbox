@@ -38,16 +38,19 @@ dotCFG title (g@CmmGraph { g_graph = GMany NothingO blockmap NothingO, g_entry =
         outedges :: Label -> Block node C C -> [(Label, Label)]
         outedges label block = map (label,) $ successors block
         dmap :: LabelMap DominatorSet
-        dmap = dominatorMap' g
-        dominators lbl = mapFindWithDefault AllNodes lbl dmap
-        -- dominates' lbl blockname = setMember lbl (dominators blockname)
-        dominates lbl blockname = False
+        dmap = dominatorMap g
+        dominators lbl = getFact domlattice lbl dmap
+        dominates lbl blockname = has (rpnum lbl) (dominators blockname)
+            where has _ AllNodes = False
+                  has _ EntryNode = False
+                  has n (NumberedNode m p) = m == n || has n p
         headers :: LabelSet
         headers = foldMap headersPointedTo blockmap
         headersPointedTo block =
             setFromList [label | label <- successors block,
                                           dominates label (entryLabel block)]
         rpnums = rpmap g
+        rpnum lbl = mapFindWithDefault 0 lbl rpnums
             
 
 dotNode :: LabelSet -> LabelMap Int -> LabelMap DominatorSet -> Label -> SDoc
