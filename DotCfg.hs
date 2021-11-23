@@ -9,6 +9,7 @@ where
 
 import Data.List
 import Prelude hiding ((<>))
+import AltFastDom
 
 import GHC.Cmm
 import GHC.Cmm.Dataflow
@@ -33,30 +34,42 @@ dotCFG title (g@CmmGraph { g_graph = GMany NothingO blockmap NothingO, g_entry =
     $$
     text "}"
   where edges = vcat $ map dotEdge $ mapFoldMapWithKey outedges blockmap
-        nodes = vcat $ map(dotNode headers dmap) $ mapKeys blockmap
+        nodes = vcat $ map(dotNode headers rpnums dmap) $ mapKeys blockmap
         outedges :: Label -> Block node C C -> [(Label, Label)]
         outedges label block = map (label,) $ successors block
-        dmap = dominatorMap g
-        dominators lbl = mapFindWithDefault setEmpty lbl dmap
-        dominates lbl blockname = setMember lbl (dominators blockname)
+        dmap :: LabelMap DominatorSet
+        dmap = dominatorMap' g
+        dominators lbl = mapFindWithDefault AllNodes lbl dmap
+        -- dominates' lbl blockname = setMember lbl (dominators blockname)
+        dominates lbl blockname = False
         headers :: LabelSet
         headers = foldMap headersPointedTo blockmap
         headersPointedTo block =
             setFromList [label | label <- successors block,
                                           dominates label (entryLabel block)]
+        rpnums = rpmap g
             
 
-dotNode :: LabelSet -> LabelMap DominatorSet -> Label -> SDoc
-dotNode headers dmap label =
+dotNode :: LabelSet -> LabelMap Int -> LabelMap DominatorSet -> Label -> SDoc
+dotNode headers rpmap dmap label =
   dotName label <> space <>
   text "[label=" <> doubleQuotes dotlabel <> headermark <> text "]"
                 <> text ";"
-  where dotlabel = dotName label <> text ": " <> 
-                   (hcat $ intersperse (comma<>space) $ map dotName $ setElems $ getFact nodeset label dmap)
+  where dotlabel = dotName label <> text "(" <> int nodenum <> 
+                   text "): " <> dotDominators (getFact nodeset' label dmap)
+        nodenum = mapFindWithDefault 0 label rpmap
         headermark = if setMember label headers then
                          space <> text "peripheries=2"
                      else
                          empty
+
+--                   (hcat $ intersperse (comma<>space) $ map dotName $ setElems $ 
+
+dotDominators :: DominatorSet -> SDoc
+dotDominators EntryNode = text "<entry>"
+dotDominators AllNodes = text "<all>"
+dotDominators (NumberedNode n parent) = int n <> text " -> " <> dotDominators parent
+
 
 dotEdge :: (Label, Label) -> SDoc
 dotEdge (from, to) = dotName from <> text "->" <> dotName to <> text ";"
@@ -80,16 +93,16 @@ ndigits = 3
 --targets (CmmCall { cml_cont = k }) = toList k
 --targets (CmmForeignCall { succ = l }) = [l]
 
-type DominatorSet = LabelSet
+type SlowDominatorSet = LabelSet
 
-nodeset :: DataflowLattice DominatorSet
+nodeset :: DataflowLattice SlowDominatorSet
 nodeset = DataflowLattice setEmpty join
   where join (OldFact old) (NewFact new) =
             (if inter == old then NotChanged else Changed) inter
           where inter = setIntersection old new
                         -- probably could be done more efficiently
 
-transfer :: TransferFun DominatorSet
+transfer :: TransferFun SlowDominatorSet
 transfer block facts =
     asBase [(successor, setInsert entry incoming)
                 | successor <- successors block]
@@ -97,8 +110,38 @@ transfer block facts =
         entry = entryLabel block
         incoming = getFact nodeset entry facts
 
-dominatorMap :: node ~ CmmNode => GenCmmGraph node -> LabelMap DominatorSet
+dominatorMap :: node ~ CmmNode => GenCmmGraph node -> LabelMap SlowDominatorSet
 dominatorMap g = 
   analyzeCmmFwd nodeset transfer g startFacts
       where startFacts = mkFactBase nodeset [(g_entry g, setSingleton (g_entry g))]
 
+nodeset' :: DataflowLattice DominatorSet
+nodeset' = DataflowLattice AllNodes intersectDomSet
+
+
+dominatorMap' :: forall node . (NonLocal node, node ~ CmmNode) => GenCmmGraph node -> LabelMap DominatorSet
+dominatorMap' g =
+  analyzeCmmFwd nodeset transfer g startFacts
+      where startFacts = mkFactBase nodeset [(g_entry g, EntryNode)]
+            transfer block facts =
+                asBase [(successor, NumberedNode (nodenum block) incoming)
+                            | successor <- successors block]
+                    where asBase = mkFactBase nodeset
+                          incoming = getFact nodeset (entryLabel block) facts
+            nodenum :: Block node C C -> Int
+            nodenum block = mapFindWithDefault 0 (entryLabel block) rpnums
+            rpnums = rpmap g
+            rpnums :: LabelMap Int
+            --rpnums = mapFromList $ zip (map entryLabel rpblocks) [1..]
+            --rpblocks :: [Block node C C]
+            --rpblocks = revPostorderFrom (graphMap g) (g_entry g)
+            nodeset = nodeset'
+
+rpmap :: forall node . (NonLocal node) => GenCmmGraph node -> LabelMap Int
+rpmap g = mapFromList $ zip (map entryLabel rpblocks) [1..]
+  where rpblocks = revPostorderFrom (graphMap g) (g_entry g)
+
+                       
+
+graphMap :: GenCmmGraph n -> LabelMap (Block n C C)
+graphMap (CmmGraph { g_graph = GMany NothingO blockmap NothingO }) = blockmap
