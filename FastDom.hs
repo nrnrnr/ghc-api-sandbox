@@ -48,6 +48,10 @@ intersectDomSet' nc ofct@(OldFact (NumberedNode old op)) nfct@(NewFact (Numbered
   | otherwise = nc (NumberedNode old op)
 
 
+-- The rest of the code uses Cmm.Dataflow (Hoopl) to calculate
+-- the dominators of each node.  Because it is not so easy to attach
+-- a postorder number to each node, the code is a little awkward.
+
 domlattice :: DataflowLattice DominatorSet
 domlattice = DataflowLattice AllNodes intersectDomSet
 
