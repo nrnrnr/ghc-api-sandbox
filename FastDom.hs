@@ -1,7 +1,22 @@
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeFamilies #-}
+
 module FastDom
+  ( DominatorSet(..)
+  , intersectDomSet
+  , dominatorMap
+  , domlattice
+
+  , rpmap
+  )
 where 
 
 import GHC.Cmm.Dataflow
+import GHC.Cmm.Dataflow.Block
+import GHC.Cmm.Dataflow.Collections
+import GHC.Cmm.Dataflow.Graph
+import GHC.Cmm.Dataflow.Label
+import GHC.Cmm 
 
 -- | An efficient data structure for representing dominator sets.
 -- For details, see Cooper, Keith D., Timothy J. Harvey, and Ken Kennedy. 
@@ -33,3 +48,32 @@ intersectDomSet' nc ofct@(OldFact (NumberedNode old op)) nfct@(NewFact (Numbered
   | otherwise = nc (NumberedNode old op)
 
 
+domlattice :: DataflowLattice DominatorSet
+domlattice = DataflowLattice AllNodes intersectDomSet
+
+dominatorMap :: forall node .
+                (NonLocal node, node ~ CmmNode)
+             => GenCmmGraph node
+             -> LabelMap DominatorSet
+dominatorMap g =
+  analyzeCmmFwd domlattice transfer g startFacts
+      where startFacts = mkFactBase domlattice [(g_entry g, EntryNode)]
+            transfer block facts =
+                asBase [(successor, NumberedNode (nodenum block) incoming)
+                            | successor <- successors block]
+                    where asBase = mkFactBase domlattice
+                          incoming = getFact domlattice (entryLabel block) facts
+            rpnums :: LabelMap Int
+            -- ^ There's no easy way to put a reverse postorder number on each node,
+            -- so those numbers are recorded here.
+            rpnums = rpmap g
+            nodenum :: Block node C C -> Int
+            -- ^ reverse postorder number of each node
+            nodenum block = mapFindWithDefault 0 (entryLabel block) rpnums
+
+rpmap :: forall node . (NonLocal node) => GenCmmGraph node -> LabelMap Int
+rpmap g = mapFromList $ zip (map entryLabel rpblocks) [1..]
+  where rpblocks = revPostorderFrom (graphMap g) (g_entry g)
+
+graphMap :: GenCmmGraph n -> LabelMap (Block n C C)
+graphMap (CmmGraph { g_graph = GMany NothingO blockmap NothingO }) = blockmap

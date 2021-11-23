@@ -56,14 +56,12 @@ dotNode headers rpmap dmap label =
   text "[label=" <> doubleQuotes dotlabel <> headermark <> text "]"
                 <> text ";"
   where dotlabel = dotName label <> text "(" <> int nodenum <> 
-                   text "): " <> dotDominators (getFact nodeset' label dmap)
+                   text "): " <> dotDominators (getFact domlattice label dmap)
         nodenum = mapFindWithDefault 0 label rpmap
         headermark = if setMember label headers then
                          space <> text "peripheries=2"
                      else
                          empty
-
---                   (hcat $ intersperse (comma<>space) $ map dotName $ setElems $ 
 
 dotDominators :: DominatorSet -> SDoc
 dotDominators EntryNode = text "<entry>"
@@ -92,56 +90,3 @@ ndigits = 3
 --targets (CmmSwitch _ ts) = panic "switch targets not implemented"
 --targets (CmmCall { cml_cont = k }) = toList k
 --targets (CmmForeignCall { succ = l }) = [l]
-
-type SlowDominatorSet = LabelSet
-
-nodeset :: DataflowLattice SlowDominatorSet
-nodeset = DataflowLattice setEmpty join
-  where join (OldFact old) (NewFact new) =
-            (if inter == old then NotChanged else Changed) inter
-          where inter = setIntersection old new
-                        -- probably could be done more efficiently
-
-transfer :: TransferFun SlowDominatorSet
-transfer block facts =
-    asBase [(successor, setInsert entry incoming)
-                | successor <- successors block]
-  where asBase = mkFactBase nodeset
-        entry = entryLabel block
-        incoming = getFact nodeset entry facts
-
-dominatorMap :: node ~ CmmNode => GenCmmGraph node -> LabelMap SlowDominatorSet
-dominatorMap g = 
-  analyzeCmmFwd nodeset transfer g startFacts
-      where startFacts = mkFactBase nodeset [(g_entry g, setSingleton (g_entry g))]
-
-nodeset' :: DataflowLattice DominatorSet
-nodeset' = DataflowLattice AllNodes intersectDomSet
-
-
-dominatorMap' :: forall node . (NonLocal node, node ~ CmmNode) => GenCmmGraph node -> LabelMap DominatorSet
-dominatorMap' g =
-  analyzeCmmFwd nodeset transfer g startFacts
-      where startFacts = mkFactBase nodeset [(g_entry g, EntryNode)]
-            transfer block facts =
-                asBase [(successor, NumberedNode (nodenum block) incoming)
-                            | successor <- successors block]
-                    where asBase = mkFactBase nodeset
-                          incoming = getFact nodeset (entryLabel block) facts
-            nodenum :: Block node C C -> Int
-            nodenum block = mapFindWithDefault 0 (entryLabel block) rpnums
-            rpnums = rpmap g
-            rpnums :: LabelMap Int
-            --rpnums = mapFromList $ zip (map entryLabel rpblocks) [1..]
-            --rpblocks :: [Block node C C]
-            --rpblocks = revPostorderFrom (graphMap g) (g_entry g)
-            nodeset = nodeset'
-
-rpmap :: forall node . (NonLocal node) => GenCmmGraph node -> LabelMap Int
-rpmap g = mapFromList $ zip (map entryLabel rpblocks) [1..]
-  where rpblocks = revPostorderFrom (graphMap g) (g_entry g)
-
-                       
-
-graphMap :: GenCmmGraph n -> LabelMap (Block n C C)
-graphMap (CmmGraph { g_graph = GMany NothingO blockmap NothingO }) = blockmap
