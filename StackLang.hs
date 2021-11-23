@@ -782,6 +782,7 @@ pprSlExpr opts e = case e of
              , char '}'
              ]
 
+   _ -> error "no ppr for expr"
 
 pprSlAlt :: OutputablePass pass => SlPprOpts -> Bool -> GenSlAlt pass -> SDoc
 pprSlAlt opts indent (con, params, expr)

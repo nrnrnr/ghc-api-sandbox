@@ -24,7 +24,7 @@ topBind (StgTopStringLit {}) = []
 topBind (StgTopLifted b) = bindings b
 
 bindings (StgNonRec l r) = [S.Bind l (rhs r)]
-binding  (StgRec    bs)  = map (\(l, r) -> S.Bind l (rhs r)) bs
+bindings (StgRec    bs)  = map (\(l, r) -> S.Bind l (rhs r)) bs
 
 
 rhs :: (XRhsClosure pass ~ DIdSet, BinderP pass ~ Id, XLet pass ~ XLetNoEscape pass)

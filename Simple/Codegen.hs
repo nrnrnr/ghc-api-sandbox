@@ -40,6 +40,8 @@ expr forcity dest e k =
         return $ T.Funcall r forcity f args (T.Cont k)
     S.Case e result alts -> do
         return $ error "case not implemented"
+    S.Let {} ->         return $ error "let not implemented"
+    S.LetRec {} ->         return $ error "letrec not implemented"
         
   where assign sle = return $ T.Assign dest sle k
 
