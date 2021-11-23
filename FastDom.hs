@@ -31,6 +31,13 @@ data DominatorSet = NumberedNode { ds_revpostnum :: Int -- ^ reverse postorder n
 
 -- in reverse postorder, nodes closer to the entry have smaller numbers
 
+
+-- N.B. The original paper uses a mutable data structure which is updated
+-- imperatively.  NR thinks it likely that this aspect of the algorithm
+-- is not essential to the good performance: what matters is that the
+-- number of iterations be small and that intersections be computed quickly.
+-- But there are no measurements.
+
 intersectDomSet :: OldFact DominatorSet -> NewFact DominatorSet -> JoinedFact DominatorSet
 intersectDomSet = intersectDomSet' NotChanged
 
