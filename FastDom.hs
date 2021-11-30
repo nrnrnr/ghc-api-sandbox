@@ -89,3 +89,12 @@ rpmap g = mapFromList $ zip (map entryLabel rpblocks) [1..]
 
 graphMap :: GenCmmGraph n -> LabelMap (Block n C C)
 graphMap (CmmGraph { g_graph = GMany NothingO blockmap NothingO }) = blockmap
+
+
+instance Semigroup DominatorSet where
+    d <> d' = getJoined (intersectDomSet (OldFact d) (NewFact d'))
+      where getJoined (Changed a) = a
+            getJoined (NotChanged a) = a
+
+instance Monoid DominatorSet where
+    mempty = AllNodes
