@@ -132,8 +132,16 @@ dumpCmm context summ = do
         decl platform (CmmData (Section sty label) d) = when False $ do
           putStrLn $ show label ++ "(" ++ show sty ++ "):"
           pprout context $ pdoc platform d
-        decl _platform (CmmProc _h entry _registers graph) = do
+        decl platform (CmmProc h entry registers graph) = do
           printSDocLn context (PageMode True) stdout $ dotCFG (ppr entry) graph
+          when True $ do
+            putStrLn "/*********"
+            pprout context $ pdoc platform h
+            pprout context entry
+            putStr "global registers" >> pprout context registers
+            pprout context $ pdoc platform graph
+            putStrLn "*********/"
+                     
 
 
 
