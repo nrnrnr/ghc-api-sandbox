@@ -112,7 +112,7 @@ dumpCmm context summ = do
   let infotable = emptyInfoTableProvMap
   let tycons = []
   let ccs = emptyCollectedCCs
-  let stg' = annTopBindingsFreeVars stg
+  let stg' = depSortWithAnnotStgPgm (ms_mod summ) stg
   let hpcinfo = emptyHpcInfo False
   (groups, (_stub, _infos)) <-
       liftIO $

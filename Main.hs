@@ -27,7 +27,7 @@ import GHC.Utils.Misc (fstOf3)
 
 import System.Environment ( getArgs )
 import System.IO (stdout)
-import GHC.Stg.Syntax (StgTopBinding, pprGenStgTopBindings, initStgPprOpts)
+import GHC.Stg.Syntax (StgTopBinding, CgStgTopBinding, pprGenStgTopBindings, initStgPprOpts)
 import GHC.Stg.FVs
 import GHC.CoreToStg (coreToStg)
 import GHC.Plugins (isDataTyCon, fstOf3)
@@ -42,6 +42,7 @@ import GHC.Platform (Platform (Platform))
 import GHC (GhcMonad(getSession))
 
 import qualified Simple.ImportStg as I
+import qualified Simple.Stg as S
 import Simple.Stg.Outputable ()
 
 libdir = "/home/nr/asterius/ghc/_build/stage1/lib"
@@ -93,7 +94,7 @@ dumpImportedStg context summ = do
   env <- getSession
   guts <- liftIO $ frontend dflags env summ
   stg <- stgify summ guts
-  let simple = I.stgToSimpleStg $ annTopBindingsFreeVars stg
+  let simple = error "I.stgToSimpleStg $ annTopBindingsFreeVars stg" :: S.Program
   liftIO $ printSDocLn context (PageMode True) stdout $ ppr simple
 
 
@@ -137,7 +138,7 @@ dumpCmm context summ = do
   let infotable = emptyInfoTableProvMap
   let tycons = []
   let ccs = emptyCollectedCCs
-  let stg' = annTopBindingsFreeVars stg
+  let stg' = depSortWithAnnotStgPgm (ms_mod summ) stg
   let hpcinfo = emptyHpcInfo False
   (groups, (stub, infos)) <-
       liftIO $
