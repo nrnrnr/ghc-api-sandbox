@@ -3,11 +3,10 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module DotCfg (
-  dotCFG  
+  dotCFG
 )
 where
 
-import Data.List
 import Prelude hiding ((<>))
 import FastDom
 
@@ -20,7 +19,6 @@ import GHC.Cmm.Dataflow.Label
 import GHC.Utils.Outputable
 
 
-                     
 
 
 dotCFG :: forall node . (NonLocal node) => SDoc -> GenCmmGraph node -> SDoc
@@ -29,13 +27,16 @@ dotCFG title (g@CmmGraph { g_graph = GMany NothingO blockmap NothingO, g_entry =
     text "digraph {" $$
     nest 2 (edges $$
             nodes $$
+            exitEdges $$
+            text "exit [shape=\"plaintext\", label=" <>
+                 doubleQuotes exitViz <> text "];" $$
             text "entry [shape=\"plaintext\", label=" <>
-                 doubleQuotes title <> text "];" $$
+                 doubleQuotes entryviz <> irrcolor <> text "];" $$
             text "entry -> " <> dotName entry <> text ";")
     $$
     text "}"
-  where edges = vcat $ map dotEdge $ mapFoldMapWithKey outedges blockmap
-        nodes = vcat $ map(dotNode headers rpnums dmap) $ mapKeys blockmap
+  where edges = vcat $ map (dotEdge rpnum) $ mapFoldMapWithKey outedges blockmap
+        nodes = vcat $ map (dotNode headers rpnums dmap) $ mapKeys blockmap
         outedges :: Label -> Block node C C -> [(Label, Label)]
         outedges label block = map (label,) $ successors block
         dmap :: LabelMap DominatorSet
@@ -51,17 +52,46 @@ dotCFG title (g@CmmGraph { g_graph = GMany NothingO blockmap NothingO, g_entry =
             setFromList [label | label <- successors block,
                                           dominates label (entryLabel block)]
         rpnums = rpmap g
-        rpnum lbl = mapFindWithDefault 0 lbl rpnums
-            
+        rpnum lbl = mapFindWithDefault (-1) lbl rpnums
 
+        entryviz = case reducibility rpnum dominates blockmap of
+                     Reducible -> title
+                     Irreducible -> title <> text "\\nIRREDUCIBLE"
+        irrcolor = case reducibility rpnum dominates blockmap of
+                     Reducible -> empty
+                     Irreducible -> comma <> space <> text "color=" <>
+                                    doubleQuotes (text "red")
+        exitViz = text "exit:" <> space <> dotDominators exitDominators
+        exitNodeLabels :: [Label]
+        exitNodeLabels =
+            foldMap (\n -> if null (successors n) then [entryLabel n] else []) blockmap
+        exitDominators =
+            foldMap (\lbl -> NumberedNode (rpnum lbl)  (dominators lbl)) exitNodeLabels
+        exitEdges = vcat [dotName from <> text "-> exit;" | from <- exitNodeLabels]
+
+
+type PostorderNumber = Int
+
+data Reducibility = Reducible | Irreducible
+
+reducibility :: NonLocal node
+             => (Label -> PostorderNumber)
+             -> (Label -> Label -> Bool)
+             -> LabelMap (Block node C C)
+             -> Reducibility
+reducibility rpnum dominates blockmap =
+    if all goodBlock blockmap then Reducible else Irreducible
+        where goodBlock b = unreachable b || all (goodEdge (entryLabel b)) (successors b)
+              goodEdge from to = rpnum to > rpnum from || to `dominates` from
+              unreachable b = rpnum (entryLabel b) < 0
 dotNode :: LabelSet -> LabelMap Int -> LabelMap DominatorSet -> Label -> SDoc
 dotNode headers rpmap dmap label =
   dotName label <> space <>
   text "[label=" <> doubleQuotes dotlabel <> headermark <> text "]"
                 <> text ";"
-  where dotlabel = dotName label <> text "(" <> int nodenum <> 
+  where dotlabel = ppr label <> text "(" <> int nodenum <>
                    text "): " <> dotDominators (getFact domlattice label dmap)
-        nodenum = mapFindWithDefault 0 label rpmap
+        nodenum = mapFindWithDefault (-1) label rpmap
         headermark = if setMember label headers then
                          space <> text "peripheries=2"
                      else
@@ -73,8 +103,12 @@ dotDominators AllNodes = text "<all>"
 dotDominators (NumberedNode n parent) = int n <> text " -> " <> dotDominators parent
 
 
-dotEdge :: (Label, Label) -> SDoc
-dotEdge (from, to) = dotName from <> text "->" <> dotName to <> text ";"
+dotEdge :: (Label -> Int) -> (Label, Label) -> SDoc
+dotEdge rpnum (from, to) = dotName from <> text "->" <> dotName to <> style <> text ";"
+  where style = if rpnum to < rpnum from then
+                    space <> text "[color=\"blue\"]"
+                else
+                    empty
 
 dotName :: Label -> SDoc
 dotName label = text ("L" ++ shortdigits)
