@@ -123,8 +123,8 @@ dumpCmm context summ = do
         group platform = mapM_ (decl platform)
         decl :: ( OutputableP Platform d
                 , OutputableP Platform h
+                , OutputableP Platform (GenCmmGraph node)
                 , NonLocal node
-                , node ~ CmmNode
                 )
                 => Platform
                 -> GenCmmDecl d h (GenCmmGraph node)

@@ -22,7 +22,8 @@ import GHC.Utils.Outputable
 
                      
 
-dotCFG :: forall node . (NonLocal node, node ~ CmmNode) => SDoc -> GenCmmGraph node -> SDoc
+
+dotCFG :: forall node . (NonLocal node) => SDoc -> GenCmmGraph node -> SDoc
 dotCFG title (g@CmmGraph { g_graph = GMany NothingO blockmap NothingO, g_entry = entry }) =
     -- blockmap is foldable and traversable
     text "digraph {" $$

@@ -64,7 +64,7 @@ domlattice :: DataflowLattice DominatorSet
 domlattice = DataflowLattice AllNodes intersectDomSet
 
 dominatorMap :: forall node .
-                (NonLocal node, node ~ CmmNode)
+                (NonLocal node)
              => GenCmmGraph node
              -> LabelMap DominatorSet
 dominatorMap g =
