@@ -81,7 +81,7 @@ dominatorMap g =
             rpnums = rpmap g
             nodenum :: Block node C C -> Int
             -- ^ reverse postorder number of each node
-            nodenum block = mapFindWithDefault 0 (entryLabel block) rpnums
+            nodenum block = mapFindWithDefault (-1) (entryLabel block) rpnums
 
 rpmap :: forall node . (NonLocal node) => GenCmmGraph node -> LabelMap Int
 rpmap g = mapFromList $ zip (map entryLabel rpblocks) [1..]
