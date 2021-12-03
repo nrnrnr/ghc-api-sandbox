@@ -5,7 +5,7 @@
 module Peterson2
 where
 
-import FastDom
+import GHC.Cmm.Dataflow.Dominators
 
 import Data.Function
 import Data.List (sortBy)

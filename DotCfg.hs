@@ -8,7 +8,7 @@ module DotCfg (
 where
 
 import Prelude hiding ((<>))
-import FastDom
+import GHC.Cmm.Dataflow.Dominators
 
 import GHC.Cmm
 import GHC.Cmm.Dataflow

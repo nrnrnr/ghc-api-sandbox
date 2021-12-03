@@ -1,7 +1,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 
-module FastDom
+module GHC.Cmm.Dataflow.Dominators
   ( DominatorSet(..)
   , intersectDomSet
   , dominatorMap
