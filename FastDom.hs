@@ -5,6 +5,7 @@ module FastDom
   ( DominatorSet(..)
   , intersectDomSet
   , dominatorMap
+  , dominatorMap'
   , domlattice
 
   , rpmap
@@ -22,7 +23,8 @@ import GHC.Cmm
 -- For details, see Cooper, Keith D., Timothy J. Harvey, and Ken Kennedy. 
 -- A simple, fast dominance algorithm. 2006. 
 
-data DominatorSet = NumberedNode { ds_revpostnum :: Int -- ^ reverse postorder number
+data DominatorSet = NumberedNode { ds_revpostnum :: RPNum -- ^ reverse postorder number
+                                 , ds_label  :: Label
                                  , ds_parent :: DominatorSet
                                     -- invariant: parent is never AllNodes
                                  } 
@@ -30,6 +32,9 @@ data DominatorSet = NumberedNode { ds_revpostnum :: Int -- ^ reverse postorder n
                   | AllNodes -- equivalent of paper's Undefined
 
 -- in reverse postorder, nodes closer to the entry have smaller numbers
+
+
+type RPNum = Int  -- should this be a newtype?
 
 
 -- N.B. The original paper uses a mutable data structure which is updated
@@ -49,11 +54,11 @@ intersectDomSet' nc (OldFact EntryNode) (NewFact _)         = nc EntryNode
 intersectDomSet' _  (OldFact _)         (NewFact EntryNode) = Changed EntryNode
 intersectDomSet' nc (OldFact a)         (NewFact AllNodes)  = nc a
 intersectDomSet' _  (OldFact AllNodes)  (NewFact a)         = Changed a
-intersectDomSet' nc ofct@(OldFact (NumberedNode old op))
-                    nfct@(NewFact (NumberedNode new np))
+intersectDomSet' nc ofct@(OldFact (NumberedNode old ol op))
+                    nfct@(NewFact (NumberedNode new nl np))
   | old < new = intersectDomSet' nc ofct (NewFact np)
   | old > new = intersectDomSet' Changed (OldFact op) nfct
-  | otherwise = nc (NumberedNode old op)
+  | otherwise = nc (NumberedNode old ol op)
 
 
 -- The rest of the code uses Cmm.Dataflow (Hoopl) to calculate
@@ -67,11 +72,20 @@ dominatorMap :: forall node .
                 (NonLocal node)
              => GenCmmGraph node
              -> LabelMap DominatorSet
-dominatorMap g =
-  analyzeCmmFwd domlattice transfer g startFacts
+
+dominatorMap' :: forall node .
+                (NonLocal node)
+             => GenCmmGraph node
+             -> (LabelMap DominatorSet, LabelMap RPNum)
+                 -- ^ includes reverse postorder numbering
+
+dominatorMap = fst . dominatorMap'
+
+dominatorMap' g =
+  (analyzeCmmFwd domlattice transfer g startFacts, rpnums)
       where startFacts = mkFactBase domlattice [(g_entry g, EntryNode)]
             transfer block facts =
-                asBase [(successor, NumberedNode (nodenum block) incoming)
+                asBase [(successor, NumberedNode (nodenum block) (entryLabel block) incoming)
                             | successor <- successors block]
                     where asBase = mkFactBase domlattice
                           incoming = getFact domlattice (entryLabel block) facts
