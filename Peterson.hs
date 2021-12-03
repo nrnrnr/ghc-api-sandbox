@@ -53,16 +53,16 @@ type Stack = [StackFrame]
 --branchCode (BlockCode b) = fst (decompose b)
 --branchCode (DirectTarget _) = mempty
 
-structure :: forall c node . (node ~ CmmNode, Code c) => GenCmmGraph node -> c
-structure g = doNode (blockLabeled (g_entry g)) []
+structure :: forall c node . (node ~ CmmNode, Code c, CodeExpr c ~ CmmExpr) => GenCmmGraph node -> c
+structure g = doBlock (blockLabeled (g_entry g)) []
  where
 
-   doNode   :: MyBlock -> Stack -> c
+   doBlock   :: MyBlock -> Stack -> c
    doBegins :: MyBlock -> [MyBlock] -> Stack -> c
    doBranch :: Label -> Label -> Stack -> c
    doStack  :: Stack -> c
 
-   doNode x stack = codeLabel (entryLabel x) <> doBegins x (mergeDominees x) stack
+   doBlock x stack = codeLabel (entryLabel x) <> doBegins x (mergeDominees x) stack
 
    doBegins x (y:ys) stack = blockEntry (entryLabel y) <>
                              doBegins x ys (PendingNode y:stack) -- step 1
@@ -79,12 +79,12 @@ structure g = doNode (blockLabeled (g_entry g)) []
      | isBackward from to = continue to (index to stack) <> unimp "loops" -- case 1 step 4
      | isMergeLabel to = goto to (index to stack) -- could be omitted if to on top of stack
                     <> doStack stack
-     | otherwise = doNode (blockLabeled to) stack
+     | otherwise = doBlock (blockLabeled to) stack
            
    -- case 3
    doStack (PendingElse c f : stack) = ifElse <> doBranch c f (PendingEndif : stack)
    doStack (PendingEndif : stack) = ifEnd <> doStack stack
-   doStack (PendingNode x : stack) = blockExit (entryLabel x) <> doNode x stack
+   doStack (PendingNode x : stack) = blockExit (entryLabel x) <> doBlock x stack
    doStack [] = mempty
 
    blockLabeled :: Label -> MyBlock
