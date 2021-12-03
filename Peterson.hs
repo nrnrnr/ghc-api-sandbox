@@ -31,52 +31,65 @@ class (Monoid c) => Code c where
   ifStart :: CodeExpr c -> Label -> c
   ifElse :: c
   ifEnd :: c
-  repeatStart :: c
-  repeatEnd :: c
+  repeatStart :: Label -> c
+  repeatEnd :: Label -> c
   blockEntry :: Label -> c
   blockExit :: Label -> c
 
   codeBody :: MyBlock -> c
 
--- case 1
+-- | Abstracts the kind of control flow we understand how to convert.
+-- A block can be left unconditionally, conditionally on a predicate
+-- of type `e`, or not at all.
+
 data ControlFlow e = Unconditional Label
                    | Conditional e Label Label
                    | TerminalFlow
 
-data StackFrame = PendingElse Label Label
-                | PendingEndif
-                | PendingNode MyBlock
-
+-- | Peterson's stack
 type Stack = [StackFrame]
+data StackFrame = PendingElse Label Label -- ^ YT
+                | PendingEndif            -- ^ YF
+                | PendingNode MyBlock     -- ^ ordinary node
+                | EndLoop Label           -- ^ Peterson end node
 
---branchCode :: Branch -> Code
---branchCode (BlockCode b) = fst (decompose b)
---branchCode (DirectTarget _) = mempty
 
-structure :: forall c node . (node ~ CmmNode, Code c, CodeExpr c ~ CmmExpr) => GenCmmGraph node -> c
+structure :: forall c node . (node ~ CmmNode, Code c, CodeExpr c ~ CmmExpr)
+          => GenCmmGraph node -> c
 structure g = doBlock (blockLabeled (g_entry g)) []
  where
 
-   doBlock   :: MyBlock -> Stack -> c
+   doBlock  :: MyBlock -> Stack -> c
    doBegins :: MyBlock -> [MyBlock] -> Stack -> c
    doBranch :: Label -> Label -> Stack -> c
    doStack  :: Stack -> c
 
    doBlock x stack = codeLabel (entryLabel x) <> doBegins x (mergeDominees x) stack
+     -- case 1 step 2 (done before step 1)
+     -- note mergeDominees must be ordered with largest RP number first
 
    doBegins x (y:ys) stack = blockEntry (entryLabel y) <>
-                             doBegins x ys (PendingNode y:stack) -- step 1
-   doBegins x [] stack = codeLabel xlabel <> codeBody x <> sequel
-     where sequel = case flowLeaving x of
-                      Unconditional l -> doBranch xlabel l stack
-                      Conditional e t f ->
-                          ifStart e xlabel <> doBranch xlabel t (PendingElse xlabel f : stack)
-                      TerminalFlow -> gotoExit
+                             doBegins x ys (PendingNode y:stack) -- case 1 step 1
+   doBegins x [] stack =
+       codeLabel xlabel <>
+       if isHeader xlabel then repeatStart xlabel <> continue x (EndLoop xlabel : stack)
+       else continue x stack
+
+     -- rolls together case 1 step 6, case 2 step 1, case 2 step 3
+     where continue x stack =
+             codeBody x <>
+             case flowLeaving x of
+               Unconditional l -> doBranch xlabel l stack -- case 1 step 6
+               Conditional e t f -> -- case 1 step 5
+                 ifStart e xlabel <> doBranch xlabel t (PendingElse xlabel f : stack)
+               TerminalFlow -> gotoExit <> doStack stack
+                  -- case 1 step 6, case 2 steps 2 and 3
            xlabel = entryLabel x
 
    -- case 2
    doBranch from to stack 
-     | isBackward from to = continue to (index to stack) <> unimp "loops" -- case 1 step 4
+     | isBackward from to = continue to (index to stack) <> doStack stack
+          -- case 1 step 4
      | isMergeLabel to = goto to (index to stack) -- could be omitted if to on top of stack
                     <> doStack stack
      | otherwise = doBlock (blockLabeled to) stack
@@ -85,6 +98,7 @@ structure g = doBlock (blockLabeled (g_entry g)) []
    doStack (PendingElse c f : stack) = ifElse <> doBranch c f (PendingEndif : stack)
    doStack (PendingEndif : stack) = ifEnd <> doStack stack
    doStack (PendingNode x : stack) = blockExit (entryLabel x) <> doBlock x stack
+   doStack (EndLoop x : stack) = repeatEnd x <> doStack stack
    doStack [] = mempty
 
    blockLabeled :: Label -> MyBlock
@@ -181,15 +195,12 @@ structure g = doBlock (blockLabeled (g_entry g)) []
 type RPNum = Int
 
 
-unimp :: String -> a
-unimp s = panic $ s ++ " not implemented"
-
 flowLeaving :: MyBlock -> ControlFlow CmmExpr
 flowLeaving b =
     case lastNode b of
       CmmBranch l -> Unconditional l
       CmmCondBranch c t f _ -> Conditional c t f
-      CmmSwitch { } -> unimp "switch"
+      CmmSwitch { } -> panic "switch not implemented"
       CmmCall { cml_cont = Just l } -> Unconditional l
       CmmCall { cml_cont = Nothing } -> TerminalFlow
       CmmForeignCall { succ = l } -> Unconditional l
