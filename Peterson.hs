@@ -1,6 +1,5 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE FlexibleInstances #-}
 
 module Peterson
 where
@@ -19,34 +18,53 @@ import GHC.Cmm.Dataflow.Collections
 import GHC.Cmm.Dataflow.Graph
 import GHC.Cmm.Dataflow.Label
 import GHC.Utils.Panic
+import GHC.Builtin.Names (traceKey)
 
 type MyBlock = CmmBlock
+
+-- | The type of code ("statements") we intend to emit.
+-- This might be a sequence of Wasm instructions.
+-- Type `CodeExpr c` is the type of expressions that 
+-- can appear as a condition in an `if`.
 
 class (Monoid c) => Code c where
   type CodeExpr c :: *
   codeLabel :: Label -> c
-  gotoExit :: c
-  goto :: Label -> Int -> c
-  continue :: Label -> Int -> c
-  ifStart :: CodeExpr c -> Label -> c
+
+  repeatStart :: Label -> c -- ^ marks start and end of "do forever"
+  repeatEnd :: Label -> c
+
+  ifStart :: CodeExpr c -> Label -> c -- ^ marks structured `if` statement
   ifElse :: c
   ifEnd :: c
-  repeatStart :: Label -> c
-  repeatEnd :: Label -> c
-  blockEntry :: Label -> c
+
+  blockEntry :: Label -> c  -- ^ put code in block so `goto` can be replace with `exit`
   blockExit :: Label -> c
 
-  codeBody :: MyBlock -> c
+  goto     :: Label -> Int -> c  -- ^ exit; translates as `br k`
+  continue :: Label -> Int -> c  -- ^ restart loop; translates as `br k`
+
+  gotoExit :: c -- ^ stop the function (return or tail call)
+
+  codeBody :: MyBlock -> c -- ^ straight-line code
+
+
 
 -- | Abstracts the kind of control flow we understand how to convert.
 -- A block can be left unconditionally, conditionally on a predicate
--- of type `e`, or not at all.
+-- of type `e`, or not at all.  "Switch" style control flow is not
+-- yet implemented.
 
 data ControlFlow e = Unconditional Label
                    | Conditional e Label Label
                    | TerminalFlow
 
--- | Peterson's stack
+
+-- | Peterson's stack.  If I can figure out how to make 
+-- the code generator recursive, we can replace the stack
+-- with a data structure whose only purpose is to track
+-- the nexting level for exit statements.
+
 type Stack = [StackFrame]
 data StackFrame = PendingElse Label Label -- ^ YT
                 | PendingEndif            -- ^ YF
@@ -54,6 +72,7 @@ data StackFrame = PendingElse Label Label -- ^ YT
                 | EndLoop Label           -- ^ Peterson end node
 
 
+-- | Convert a Cmm CFG to structured control flow
 structure :: forall c node . (node ~ CmmNode, Code c, CodeExpr c ~ CmmExpr)
           => GenCmmGraph node -> c
 structure g = doBlock (blockLabeled (g_entry g)) []
@@ -161,7 +180,7 @@ structure g = doBlock (blockLabeled (g_entry g)) []
                  EntryNode -> ds
                  AllNodes -> panic "AllNodes appears as dominator"
                  NumberedNode { ds_label = dominator } ->
-                     mapAlter (addDominee label rpnum) dominator ds
+                     addToList (addDominee label rpnum) dominator ds
 
              dominees :: LabelMap Dominees
              dominees = mapFoldlWithKey addToDominees mapEmpty rpnums
@@ -171,13 +190,11 @@ structure g = doBlock (blockLabeled (g_entry g)) []
 
              idominees lbl = map (blockLabeled . fst) $ mapFindWithDefault [] lbl dominees
 
-             addDominee :: Label -> RPNum -> Maybe Dominees -> Maybe Dominees
-             addDominee l rpnum Nothing = Just [(l, rpnum)]
-             addDominee l rpnum (Just pairs) = Just (insert pairs)
-                 where insert [] = [(l, rpnum)]
-                       insert ((l', rpnum') : pairs)
-                           | rpnum > rpnum' = (l, rpnum) : (l', rpnum') : pairs
-                           | otherwise = (l', rpnum') : insert pairs
+             addDominee :: Label -> RPNum -> Dominees -> Dominees
+             addDominee l rpnum [] = [(l, rpnum)]
+             addDominee l rpnum ((l', rpnum') : pairs)
+                 | rpnum > rpnum' = (l, rpnum) : (l', rpnum') : pairs
+                 | otherwise = (l', rpnum') : addDominee l rpnum pairs
                                           
              rpnum lbl =
                  mapFindWithDefault (panic "label without reverse postorder number")
@@ -191,8 +208,6 @@ structure g = doBlock (blockLabeled (g_entry g)) []
 
 
    isBackward from to = rpnum to < rpnum from
-
-type RPNum = Int
 
 
 flowLeaving :: MyBlock -> ControlFlow CmmExpr
