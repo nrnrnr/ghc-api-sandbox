@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -Wno-unused-imports #-}
+
 {-
 (c) Tweag I/O, 2021
 
@@ -38,8 +40,10 @@ Design questions
 {-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module StackLang (
+module StackLang
+  
 {-
+(
         StgArg(..),
 
         GenStgTopBinding(..), GenStgBinding(..), GenStgExpr(..), GenStgRhs(..),
@@ -83,12 +87,11 @@ module StackLang (
         pprStgArg, pprStgExpr, pprStgRhs, pprStgBinding,
         pprGenStgTopBinding, pprStgTopBinding,
         pprGenStgTopBindings, pprStgTopBindings
+)
 -}
-    ) where
+ where
 
 import Prelude hiding ((<>))
-
-import GHC.Prelude
 
 import GHC.Core     ( AltCon )
 import GHC.Types.CostCentre ( CostCentreStack )
@@ -97,14 +100,12 @@ import Data.Data   ( Data )
 import Data.List   ( intersperse )
 import GHC.Core.DataCon
 import GHC.Driver.Session
-import GHC.Stg.Syntax ( StgArg(..), isDllConApp )
+import GHC.Stg.Syntax ( StgArg(..) )
 import GHC.Types.ForeignCall ( ForeignCall )
 import GHC.Types.Id
-import GHC.Types.Name        ( isDynLinkName )
 import GHC.Types.Tickish     ( StgTickish )
 import GHC.Types.Var.Set
-import GHC.Types.Literal     ( Literal, literalType )
-import GHC.Unit.Module       ( Module )
+import GHC.Types.Literal     ( Literal )
 import GHC.Utils.Outputable
 import GHC.Platform
 import GHC.Core.Ppr( {- instances -} )

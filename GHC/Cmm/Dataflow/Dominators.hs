@@ -3,7 +3,7 @@
 
 module GHC.Cmm.Dataflow.Dominators
   ( DominatorSet(..)
-  , RPNum(..)
+  , RPNum
   , intersectDomSet
   , dominatorMap
   , dominatorMap'
@@ -56,7 +56,7 @@ intersectDomSet' _  (OldFact _)         (NewFact EntryNode) = Changed EntryNode
 intersectDomSet' nc (OldFact a)         (NewFact AllNodes)  = nc a
 intersectDomSet' _  (OldFact AllNodes)  (NewFact a)         = Changed a
 intersectDomSet' nc ofct@(OldFact (NumberedNode old ol op))
-                    nfct@(NewFact (NumberedNode new nl np))
+                    nfct@(NewFact (NumberedNode new _  np))
   | old < new = intersectDomSet' nc ofct (NewFact np)
   | old > new = intersectDomSet' Changed (OldFact op) nfct
   | otherwise = nc (NumberedNode old ol op)

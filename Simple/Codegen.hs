@@ -3,11 +3,6 @@ module Simple.Codegen where
 import qualified Simple.Stg   as S  -- source language
 import qualified Simple.Stack as T -- target language
 
-import GHC.Core (AltCon)
-import GHC.Core.DataCon (DataCon)
-import GHC.Stg.Syntax (StgOp, UpdateFlag(..))
-import GHC.Types.Var
-import GHC.Prelude (undefined)
 import GHC.Types.Unique.Supply (UniqSM, MonadUnique(getUniqueM))
 
 {-
@@ -38,7 +33,7 @@ expr forcity dest e k =
     S.Funcall f args -> do
         r <- getReg
         return $ T.Funcall r forcity f args (T.Cont k)
-    S.Case e result alts -> do
+    S.Case _e _result _alts -> do
         return $ error "case not implemented"
     S.Let {} ->         return $ error "let not implemented"
     S.LetRec {} ->         return $ error "letrec not implemented"

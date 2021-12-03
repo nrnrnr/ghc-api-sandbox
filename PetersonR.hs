@@ -8,8 +8,9 @@ import Prelude hiding (succ)
 
 import GHC.Cmm.Dataflow.Dominators
 
-import Data.Function
-import Data.List (sortBy)
+--import Data.Function
+--import Data.List (sortBy)
+import Data.Kind
 import Data.Maybe
 
 import GHC.Cmm
@@ -18,7 +19,6 @@ import GHC.Cmm.Dataflow.Collections
 import GHC.Cmm.Dataflow.Graph
 import GHC.Cmm.Dataflow.Label
 import GHC.Utils.Panic
-import GHC.Builtin.Names (traceKey)
 
 type MyBlock = CmmBlock
 
@@ -28,7 +28,7 @@ type MyBlock = CmmBlock
 -- can appear as a condition in an `if`.
 
 class (Monoid c) => Code c where
-  type CodeExpr c :: *
+  type CodeExpr c :: Type
   codeLabel :: Label -> c
 
   repeatx :: Label -> c -> c
@@ -137,7 +137,7 @@ structure g = doBlock (blockLabeled (g_entry g)) []
    mergeNodes :: LabelSet
    mergeNodes = setFromList [entryLabel n | n <- rpblocks, big (preds (entryLabel n))]
     where big [] = False
-          big [x] = False
+          big [_] = False
           big (_ : _ : _) = True
 
    isHeader :: Label -> Bool
@@ -151,7 +151,7 @@ structure g = doBlock (blockLabeled (g_entry g)) []
    mergeDominees :: MyBlock -> [MyBlock]
    mergeDominees x = filter isMergeBlock $ idominees (entryLabel x)
 
-   index label [] = panic "destination label not on stack"
+   index _ [] = panic "destination label not on stack"
    index label (frame : stack)
        | matches label frame = 0
        | otherwise = 1 + index label stack

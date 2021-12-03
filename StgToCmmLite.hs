@@ -12,9 +12,6 @@
 
 module StgToCmmLite ( codeGen ) where
 
-import GHC.Prelude as Prelude
-
-import GHC.Driver.Backend
 import GHC.Driver.Session
 
 import GHC.StgToCmm.Prof (initInfoTableProv, initCostCentres, ldvEnter)
@@ -65,8 +62,6 @@ import GHC.Types.Unique.Map
 
 import Control.Monad (when,void, forM_)
 import GHC.Utils.Misc
-import System.IO.Unsafe
-import qualified Data.ByteString as BS
 import Data.Maybe
 import Data.IORef
 
@@ -176,7 +171,7 @@ style, with the increasing static environment being plumbed as a state
 variable. -}
 
 cgTopBinding :: Logger -> DynFlags -> CgStgTopBinding -> FCode ()
-cgTopBinding logger dflags = \case
+cgTopBinding _logger dflags = \case
     StgTopLifted (StgNonRec id rhs) -> do
         let (info, fcode) = cgTopRhs dflags NonRecursive id rhs
         fcode

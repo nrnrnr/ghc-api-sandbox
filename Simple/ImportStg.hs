@@ -5,8 +5,6 @@ module Simple.ImportStg (
   )
 where
 
-import Data.Maybe
-
 import GHC.Stg.Syntax
 import GHC.Types.Literal
 import GHC.Types.Var
@@ -20,6 +18,13 @@ stgToSimpleStg :: ( BinderP pass ~ Id
                   ) => [GenStgTopBinding pass] -> S.Program
 stgToSimpleStg = S.Program . concatMap topBind
 
+topBind :: (BinderP pass ~ Var, XRhsClosure pass ~ DIdSet,
+                  XLet pass ~ XLetNoEscape pass) =>
+                 GenStgTopBinding pass -> [S.Bind]
+bindings :: (XRhsClosure pass ~ DIdSet, BinderP pass ~ Var,
+                         XLet pass ~ XLetNoEscape pass) =>
+            GenStgBinding pass -> [S.Bind]
+
 topBind (StgTopStringLit {}) = []
 topBind (StgTopLifted b) = bindings b
 
@@ -30,22 +35,22 @@ bindings (StgRec    bs)  = map (\(l, r) -> S.Bind l (rhs r)) bs
 rhs :: (XRhsClosure pass ~ DIdSet, BinderP pass ~ Id, XLet pass ~ XLetNoEscape pass)
     => GenStgRhs pass -> S.Rhs
 
-rhs r@(StgRhsClosure fvs cc updfl args body) =
-    S.Lambda free (flag updfl) args (expr body)
+rhs (StgRhsClosure fvs _cc updfl args body) =
+    S.Lambda free updfl args (expr body)
   where free = dVarSetElems fvs
-rhs (StgRhsCon ccs con cnumber tickish args) = S.RhsCon con (map arg args)
+rhs (StgRhsCon _ccs con _cnumber _tickish args) = S.RhsCon con (map arg args)
     
 
 expr :: (XRhsClosure pass ~ DIdSet, BinderP pass ~ Id, XLet pass ~ XLetNoEscape pass)
      => GenStgExpr pass -> S.Exp
 expr (StgApp f args) = S.Funcall f (map arg args)
 expr (StgLit v) = S.Literal (simpleLit v)
-expr (StgConApp con k args types) = S.Construct con (map arg args)
-expr (StgOpApp op args result) = S.Primitive op (map arg args)
-expr (StgCase scrutinee result ty alts) = S.Case (expr scrutinee) result (map alt alts)
-expr (StgLet no_extension (StgNonRec x lam) body) =
+expr (StgConApp con _k args _types) = S.Construct con (map arg args)
+expr (StgOpApp op args _result) = S.Primitive op (map arg args)
+expr (StgCase scrutinee result _ty alts) = S.Case (expr scrutinee) result (map alt alts)
+expr (StgLet _no_extension (StgNonRec x lam) body) =
     S.Let (bind (x, lam)) (expr body)
-expr (StgLet no_extension (StgRec bindings) body) = 
+expr (StgLet _no_extension (StgRec bindings) body) = 
     S.LetRec (map bind bindings) (expr body)
 expr (StgLetNoEscape no_extension b body) = expr (StgLet no_extension b body)
 expr (StgTick _ e) = expr e
@@ -63,12 +68,8 @@ arg :: StgArg -> S.Atom
 arg (StgVarArg x) = S.Name x
 arg (StgLitArg c) = S.Lit (simpleLit c)
 
---flag ReEntrant = S.ReEntrant
---flag SingleEntry = S.SingleEntry
---flag Updatable = S.Updatable
 
-flag = id
-
+simpleLit :: Literal -> Int
 simpleLit (LitChar c) = fromEnum c
 simpleLit (LitNumber _ n) = fromIntegral n
 simpleLit (LitFloat x) = round x

@@ -32,7 +32,6 @@ import GHC.Plugins (isDataTyCon)
 import GHC.Types.HpcInfo (emptyHpcInfo)
 
 import GHC.Cmm.Dataflow.Graph(NonLocal)
-import GHC.Cmm.Node
 import GHC.CmmToAsm.CFG()
 
 import System.Environment ( getArgs )

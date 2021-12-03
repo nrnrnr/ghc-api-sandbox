@@ -2,8 +2,6 @@
 
 module Main where
 
-import Control.Monad.IO.Class (liftIO)
-
 import GHC
 import GHC.CoreToStg
 import GHC.CoreToStg.Prep
@@ -15,7 +13,6 @@ import GHC.Driver.Session ( defaultFatalMessager, defaultFlushOut
                           )
 
 
-import GHC.IO.Handle
 import GHC.Utils.Outputable ( printSDocLn, ppr, defaultUserStyle
                             , SDocContext
                             , Outputable
@@ -27,24 +24,23 @@ import GHC.Utils.Misc (fstOf3)
 
 import System.Environment ( getArgs )
 import System.IO (stdout)
-import GHC.Stg.Syntax (StgTopBinding, CgStgTopBinding, pprGenStgTopBindings, initStgPprOpts)
+import GHC.Stg.Syntax (StgTopBinding, pprGenStgTopBindings, initStgPprOpts)
 import GHC.Stg.FVs
-import GHC.CoreToStg (coreToStg)
-import GHC.Plugins (isDataTyCon, fstOf3)
+import GHC.Plugins (isDataTyCon)
 import GHC.Unit.Module.ModGuts ( ModGuts(..) )
 
 import StgToCmmLite (codeGen)
-import GHC.Types.HpcInfo (HpcInfo(NoHpcInfo), emptyHpcInfo)
+import GHC.Types.HpcInfo (emptyHpcInfo)
 import GHC.Types.CostCentre (emptyCollectedCCs)
 import GHC.Types.IPE (emptyInfoTableProvMap)
-import GHC.Cmm (CmmGroup, GenCmmDecl(..), CmmGraph(..), Section(..))
-import GHC.Platform (Platform (Platform))
-import GHC (GhcMonad(getSession))
+import GHC.Cmm (CmmGroup, GenCmmDecl(..), Section(..))
+import GHC.Platform (Platform)
 
-import qualified Simple.ImportStg as I
+--import qualified Simple.ImportStg as I
 import qualified Simple.Stg as S
 import Simple.Stg.Outputable ()
 
+libdir :: String
 libdir = "/home/nr/asterius/ghc/_build/stage1/lib"
 
 main :: IO ()
@@ -93,7 +89,7 @@ dumpImportedStg context summ = do
   dflags <- getSessionDynFlags
   env <- getSession
   guts <- liftIO $ frontend dflags env summ
-  stg <- stgify summ guts
+  _stg <- stgify summ guts
   let simple = error "I.stgToSimpleStg $ annTopBindingsFreeVars stg" :: S.Program
   liftIO $ printSDocLn context (PageMode True) stdout $ ppr simple
 
@@ -102,7 +98,7 @@ dumpImportedStg context summ = do
 ----------------------------------------------------------------
 
 frontend :: DynFlags -> HscEnv -> ModSummary -> IO ModGuts
-frontend dflags env summary = do
+frontend _dflags env summary = do
    parsed <- hscParse env summary
    (checked, _) <- hscTypecheckRename env summary parsed
    hscDesugar env summary checked >>= hscSimplify env []
@@ -140,7 +136,7 @@ dumpCmm context summ = do
   let ccs = emptyCollectedCCs
   let stg' = depSortWithAnnotStgPgm (ms_mod summ) stg
   let hpcinfo = emptyHpcInfo False
-  (groups, (stub, infos)) <-
+  (groups, (_stub, _infos)) <-
       liftIO $
       collectAll $
       codeGen logger dflags (ms_mod summ) infotable tycons ccs stg' hpcinfo

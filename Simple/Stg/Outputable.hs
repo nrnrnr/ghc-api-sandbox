@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -Wno-orphans #-}
+
 module Simple.Stg.Outputable where
 
 import Prelude hiding ((<>))
