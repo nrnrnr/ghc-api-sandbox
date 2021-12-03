@@ -1,0 +1,20 @@
+noloop (bits32 n) {
+  A:
+    bits32[n] = 101;
+    if (n > 0) goto B;
+  G:
+    bits32[n] = 107;
+    if (n > 7) goto F;
+  E:
+    return (0);
+  B: 
+    bits32[n] = 102;
+    if (n > 2) goto C;
+  F:
+    bits32[n] = 106;
+    goto D;
+  C:
+    bits32[n] = 103;
+  D:
+    goto E;
+}
