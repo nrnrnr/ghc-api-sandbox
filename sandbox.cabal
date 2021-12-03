@@ -60,3 +60,22 @@ executable showcfg
     default-language: Haskell2010
 
     ghc-options:
+
+executable ptest
+    import: program-default-options
+    main-is:          PTest.hs
+
+    -- Modules included in this executable, other than Main.
+    other-modules:  GHC.Cmm.Dataflow.Dominators, DotCfg, PetersonR
+
+    -- LANGUAGE extensions used by modules in this package.
+    -- other-extensions:
+    build-depends:    base >=4.14.2.0,
+                      ghc >= 9.3,
+                      bytestring >= 0.10,
+                      filepath >= 1.4
+    hs-source-dirs:   .
+    default-language: Haskell2010
+
+    ghc-options:
+
