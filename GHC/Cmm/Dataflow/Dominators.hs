@@ -3,6 +3,7 @@
 
 module GHC.Cmm.Dataflow.Dominators
   ( DominatorSet(..)
+  , RPNum(..)
   , intersectDomSet
   , dominatorMap
   , dominatorMap'
