@@ -45,7 +45,7 @@ dotCFG title (g@CmmGraph { g_graph = GMany NothingO blockmap NothingO, g_entry =
         dominates lbl blockname = has (rpnum lbl) (dominators blockname)
             where has _ AllNodes = False
                   has _ EntryNode = False
-                  has n (NumberedNode m p) = m == n || has n p
+                  has n (NumberedNode m _ p) = m == n || has n p
         headers :: LabelSet
         headers = foldMap headersPointedTo blockmap
         headersPointedTo block =
@@ -66,7 +66,7 @@ dotCFG title (g@CmmGraph { g_graph = GMany NothingO blockmap NothingO, g_entry =
         exitNodeLabels =
             foldMap (\n -> if null (successors n) then [entryLabel n] else []) blockmap
         exitDominators =
-            foldMap (\lbl -> NumberedNode (rpnum lbl)  (dominators lbl)) exitNodeLabels
+            foldMap (\lbl -> NumberedNode (rpnum lbl) lbl (dominators lbl)) exitNodeLabels
         exitEdges = vcat [dotName from <> text "-> exit;" | from <- exitNodeLabels]
 
 
@@ -100,7 +100,7 @@ dotNode headers rpmap dmap label =
 dotDominators :: DominatorSet -> SDoc
 dotDominators EntryNode = text "<entry>"
 dotDominators AllNodes = text "<all>"
-dotDominators (NumberedNode n parent) = int n <> text " -> " <> dotDominators parent
+dotDominators (NumberedNode n _ parent) = int n <> text " -> " <> dotDominators parent
 
 
 dotEdge :: (Label -> Int) -> (Label, Label) -> SDoc
