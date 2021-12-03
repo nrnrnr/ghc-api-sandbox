@@ -20,36 +20,7 @@ import GHC.Cmm.Dataflow.Graph
 import GHC.Cmm.Dataflow.Label
 import GHC.Utils.Panic
 
-{-
-Every Block maps onto Peterson's structure in this way:
-
-  - The block's entry label becomes a Peterson node X with a single branch.
-
-  - The body of the block becomes the code along the branch.
-
-  - The block's exit Cmm node becomes a Peterson node X' that has the control flow.
-
-Only an X can be a Peterson merge node.
-
-Only an X' can have multiple successors.
-
-Every Peterson branch corresponds to one of two things:
-
-  - A block body
-  - An empty branch that does nothing but transfer control to its single successor.
-
--}
-
 type MyBlock = CmmBlock
-
-class Labeled a where
-  labelOf :: a -> Label
-
-instance Labeled Label where
-    labelOf = id
-
-instance NonLocal a => Labeled (a C x) where
-    labelOf = entryLabel
 
 class (Monoid c) => Code c where
   type CodeExpr c :: *
@@ -67,15 +38,7 @@ class (Monoid c) => Code c where
 
   codeBody :: MyBlock -> c
 
-begin :: (Labeled a, Code c) => a -> c
-begin = blockEntry . labelOf
-
-end :: (Labeled a, Code c) => a -> c
-end = blockExit . labelOf
-
 -- case 1
-
-        
 data ControlFlow e = Unconditional Label
                    | Conditional e Label Label
                    | TerminalFlow
@@ -101,7 +64,8 @@ structure g = doNode (blockLabeled (g_entry g)) []
 
    doNode x stack = codeLabel (entryLabel x) <> doBegins x (mergeDominees x) stack
 
-   doBegins x (y:ys) stack = begin y  <> doBegins x ys (PendingNode y:stack) -- step 1
+   doBegins x (y:ys) stack = blockEntry (entryLabel y) <>
+                             doBegins x ys (PendingNode y:stack) -- step 1
    doBegins x [] stack = codeLabel xlabel <> codeBody x <> sequel
      where sequel = case flowLeaving x of
                       Unconditional l -> doBranch xlabel l stack
