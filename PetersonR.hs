@@ -8,8 +8,6 @@ import Prelude hiding (succ)
 
 import GHC.Cmm.Dataflow.Dominators
 
---import Data.Function
---import Data.List (sortBy)
 import Data.Kind
 import Data.Maybe
 
@@ -68,11 +66,21 @@ data StackFrame = PendingElse Label Label -- ^ YT
                 | EndLoop Label           -- ^ Peterson end node
 
 
--- | Convert a Cmm CFG to structured control flow
+-- | Convert a Cmm CFG to structured control flow.
+-- The resulting code is intended to be peephole optimized.
 structure :: forall c node . (node ~ CmmNode, Code c, CodeExpr c ~ CmmExpr)
           => GenCmmGraph node -> c
 structure g = doBlock (blockLabeled (g_entry g)) []
  where
+
+   -- | `doBlock` basically handles Peterson's case 1: it emits code 
+   -- from the block to the nearest merge node that the block dominates.
+   -- `doBegins` takes the merge nodes that the block dominates, and it
+   -- wraps the immediately preceding code in `begin...end`, so that
+   -- control can transfer to the merge node by means of an exit statement.
+   -- And `doBranch` implements a control transfer, which may be
+   -- implemented by falling through or by a `br` instruction 
+   -- created with `exit` or `continue`.
 
    doBlock  :: MyBlock -> Stack -> c
    doBegins :: MyBlock -> [MyBlock] -> Stack -> c
@@ -109,10 +117,26 @@ structure g = doBlock (blockLabeled (g_entry g)) []
      | otherwise = doBlock (blockLabeled to) stack
            
 
-   blockLabeled :: Label -> MyBlock
+   ---- everything else here is utility functions
 
-   GMany NothingO blockmap NothingO = g_graph g
+
+   blockLabeled :: Label -> MyBlock
+   rpnum :: Label -> RPNum -- ^ reverse postorder number of the labeled block
+   preds :: Label -> [Label] -- ^ reachable predecessors of reachable blocks
+   isMergeLabel :: Label -> Bool
+   isMergeBlock :: MyBlock -> Bool
+   isHeader :: Label -> Bool -- ^ identify loop headers
+   mergeDominees :: MyBlock -> [MyBlock]
+     -- ^ merge nodes whose immediate dominator is the given block.
+     -- They are produced with the largest RP number first,
+     -- so the largest RP number is pushed on the stack first.
+   dominates :: Label -> Label -> Bool
+     -- ^ Domination relation (not just immediate domination)
+
+
+
    blockLabeled l = fromJust $ mapLookup l blockmap
+   GMany NothingO blockmap NothingO = g_graph g
 
    rpblocks :: [MyBlock]
    rpblocks = revPostorderFrom blockmap (g_entry g)
@@ -123,24 +147,20 @@ structure g = doBlock (blockLabeled (g_entry g)) []
            a
            [(entryLabel from, to) | from <- rpblocks, to <- successors from]
 
-   preds :: Label -> [Label] -- reachable predecessors of reachable blocks
    preds = \l -> mapFindWithDefault [] l predmap
        where predmap :: LabelMap [Label]
              predmap = foldEdges (\from to pm -> addToList (from :) to pm) mapEmpty
 
-   isMergeLabel :: Label -> Bool
    isMergeLabel l = setMember l mergeNodes
-
-   isMergeBlock :: MyBlock -> Bool
    isMergeBlock = isMergeLabel . entryLabel                   
 
    mergeNodes :: LabelSet
    mergeNodes = setFromList [entryLabel n | n <- rpblocks, big (preds (entryLabel n))]
+          -- XXX need to filter out backward branches
     where big [] = False
           big [_] = False
           big (_ : _ : _) = True
 
-   isHeader :: Label -> Bool
    isHeader = \l -> setMember l headers
       where headers :: LabelSet
             headers = foldMap headersPointedTo blockmap
@@ -148,7 +168,6 @@ structure g = doBlock (blockLabeled (g_entry g)) []
                 setFromList [label | label <- successors block,
                                               dominates label (entryLabel block)]
 
-   mergeDominees :: MyBlock -> [MyBlock]
    mergeDominees x = filter isMergeBlock $ idominees (entryLabel x)
 
    index _ [] = panic "destination label not on stack"
@@ -159,8 +178,6 @@ structure g = doBlock (blockLabeled (g_entry g)) []
            matches _ _ = False
 
    idominees :: Label -> [MyBlock] -- sorted with highest rpnum first
-   rpnum :: Label -> RPNum
-   dominates :: Label -> Label -> Bool
    (idominees, rpnum, dominates) = (idominees, rpnum, dominates)
        where (dominators, rpnums) = dominatorMap' g
 
