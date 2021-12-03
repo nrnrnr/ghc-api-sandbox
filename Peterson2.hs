@@ -1,8 +1,11 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE FlexibleInstances #-}
 
-module Peterson
+module Peterson2
 where
+
+import FastDom
 
 import Data.Function
 import Data.List (sortBy)
@@ -13,6 +16,7 @@ import GHC.Cmm.Dataflow.Block
 import GHC.Cmm.Dataflow.Collections
 import GHC.Cmm.Dataflow.Graph
 import GHC.Cmm.Dataflow.Label
+import GHC.Utils.Panic
 
 {-
 Every Block maps onto Peterson's structure in this way:
@@ -42,7 +46,7 @@ class Labeled a where
 instance Labeled Label where
     labelOf = id
 
-instance NonLocal a => Labeled a where
+instance NonLocal a => Labeled (a C x) where
     labelOf = entryLabel
 
 class (Monoid c) => Code c where
@@ -59,7 +63,7 @@ class (Monoid c) => Code c where
   blockEntry :: Label -> c
   blockExit :: Label -> c
 
-  body :: MyBlock -> c
+  codeBody :: MyBlock -> c
 
 begin :: (Labeled a, Code c) => a -> c
 begin = blockEntry . labelOf
@@ -68,28 +72,6 @@ end :: (Labeled a, Code c) => a -> c
 end = blockExit . labelOf
 
 -- case 1
-doNode x stack = codeLabel (entryLabel x) <> doBegins x (mergeDominees x) stack
-
-doBegins x (y:ys) stack = begin y  <> doBegins x ys (PendingNode y:stack) -- step 1
-doBegins x [] stack = xlabel <> codeBody x <> sequel
-  where sequel = case flowOut x of
-                   Unconditional l -> doBranch xlabel l stack
-                   Conditional e t f ->
-                       ifStart e xlabel <> doBranch xlabel t (PendingElse xlabel f : stack)
-                   TerminalFlow -> gotoExit
-        xlabel = entryLabel x
-
--- case 2
-doBranch from to stack 
-  | isBackward from to = continue to (index to stack) <> unimp "loops" -- case 1 step 4
-  | isMerge to = goto to (index to stack) -- could be omitted if to on top of stack
-                 <> doStack stack
-  | otherwise doBranch to stack
-        
--- case 3
-doStack (PendingElse c f : stack) = ifElse <> doBranch c f (PendingEndif : stack)
-doStack (PendingEndif : stack) = ifEnd <> doStack stack
-doStack (PendingNode x : stack) = blockExit (entryLabel x) <> doNode x stack
 
         
 data ControlFlow e = Unconditional Label
@@ -107,65 +89,45 @@ type Stack = [StackFrame]
 --branchCode (DirectTarget _) = mempty
 
 structure :: forall c node . (node ~ CmmNode, Code c) => GenCmmGraph node -> c
-structure g = doBranch (DirectTarget (g_entry g)) [PendingNode Terminal]
+structure g = doNode (blockLabeled (g_entry g)) []
  where
-   -- case 2 from Peterson
-   doBranch :: Branch -> Stack -> c
-   doBranch (BlockCode b) stack = body b <> doNode (BlockEnd b) stack
-   doBranch (GotoTerminal) stack = gotoExit <> doStack stack
-   doBranch (GotoPetersonEnd l) stack = goto l <> doStack stack
-   doBranch (DirectTarget label) stack =
-       if isMerge label then
-           goto label <> doStack stack
-       else
-           doNode (blockLabeled label) stack
 
-   -- case 1 from Peterson
-   doNode :: PNode -> Stack -> c
-   doNode x stack =
-     thelabel x <> next -- step 2
-     where stack'' = if isHeader x then LoopEnd x : stack' else stack'
-               where stack'  = sortBy (compare `on` rpnum) : stack -- step 1
-           thelabel (BlockStart b) =
-               codeLabel (entryLabel b) -- if b is a loop header make this a loop!
-           thelabel _ = mempty
-           next = -- steps 3, 4, 5, 6
-             case x of Terminal -> gotoExit -- step 3 (assert stack is empty?)
-                       LoopEnd b -> goto (entryLabel b) -- step 4
-                       BlockEnd b -> case flowLeaving b of
-                           Conditional e t f -> -- step 5
-                               ifStart e <>
-                               doBranch (DirectTarget t) (PendingElse f : stack'')
-                           Unconditional l ->
-                               doBranch (DirectTarget l) stack'' - 6
-                           TerminalFlow -> 
-                               doBranch GotoTerminal stack'' - 6
-                       BlockStart b -> doBranch (BlockCode b) stack'' -- step 6 also
+   doNode   :: MyBlock -> Stack -> c
+   doBegins :: MyBlock -> [MyBlock] -> Stack -> c
+   doBranch :: Label -> Label -> Stack -> c
+   doStack  :: Stack -> c
 
-   doStack :: Stack -> c
-   doStack (PendingElse l : stack) =
-       ifElse <> doBranch (DirectTarget l) (PendingEndif : stack)
+   doNode x stack = codeLabel (entryLabel x) <> doBegins x (mergeDominees x) stack
+
+   doBegins x (y:ys) stack = begin y  <> doBegins x ys (PendingNode y:stack) -- step 1
+   doBegins x [] stack = codeLabel xlabel <> codeBody x <> sequel
+     where sequel = case flowLeaving x of
+                      Unconditional l -> doBranch xlabel l stack
+                      Conditional e t f ->
+                          ifStart e xlabel <> doBranch xlabel t (PendingElse xlabel f : stack)
+                      TerminalFlow -> gotoExit
+           xlabel = entryLabel x
+
+   -- case 2
+   doBranch from to stack 
+     | isBackward from to = continue to (index to stack) <> unimp "loops" -- case 1 step 4
+     | isMergeLabel to = goto to (index to stack) -- could be omitted if to on top of stack
+                    <> doStack stack
+     | otherwise = doNode (blockLabeled to) stack
+           
+   -- case 3
+   doStack (PendingElse c f : stack) = ifElse <> doBranch c f (PendingEndif : stack)
    doStack (PendingEndif : stack) = ifEnd <> doStack stack
-   doStack (PendingNode n : stack) = doNode n stack
+   doStack (PendingNode x : stack) = blockExit (entryLabel x) <> doNode x stack
+   doStack [] = mempty
 
-   isMerge :: Label -> Bool
-   isMerge = unimp "isMerge"
+   blockLabeled :: Label -> MyBlock
 
    GMany NothingO blockmap NothingO = g_graph g
    blockLabeled l = fromJust $ mapLookup l blockmap
 
-   targetSuccessor :: MyBlock -> Branch
-   targetSuccessor b = case successors b of
-                         [l] -> DirectTarget l
-                         [] -> GotoTerminal
-                         _ : _ : _ -> error "multiple successors with unconditional flow"
-
    rpblocks :: [MyBlock]
    rpblocks = revPostorderFrom blockmap (g_entry g)
-
-   rpnum :: Label -> Int
-   rpnum l = mapFindWithDefault (error "unreachable block") l rpnums
-     where rpnums = mapFromList (zip (map entryLabel rpblocks) [1..]) :: LabelMap Int
 
    foldEdges :: forall a . (Label -> Label -> a -> a) -> a -> a
    foldEdges f a =
@@ -174,13 +136,18 @@ structure g = doBranch (DirectTarget (g_entry g)) [PendingNode Terminal]
            [(entryLabel from, to) | from <- rpblocks, to <- successors from]
 
    preds :: Label -> [Label] -- reachable predecessors of reachable blocks
-   preds l = get l predmap
-       where predmap =
-                 foldEdges (\from to pm -> mapInsert to (from : get to pm) pm) mapEmpty
-             get = mapFindWithDefault []
+   preds = \l -> mapFindWithDefault [] l predmap
+       where predmap :: LabelMap [Label]
+             predmap = foldEdges (\from to pm -> addToList (from :) to pm) mapEmpty
+
+   isMergeLabel :: Label -> Bool
+   isMergeLabel l = setMember l mergeNodes
+
+   isMergeBlock :: MyBlock -> Bool
+   isMergeBlock = isMergeLabel . entryLabel                   
 
    mergeNodes :: LabelSet
-   mergeNodes = setFromList [entryLabel n | n <- rpblocks, big preds (entryLabel n)]
+   mergeNodes = setFromList [entryLabel n | n <- rpblocks, big (preds (entryLabel n))]
     where big [] = False
           big [x] = False
           big (_ : _ : _) = True
@@ -188,9 +155,66 @@ structure g = doBranch (DirectTarget (g_entry g)) [PendingNode Terminal]
    isHeader :: Label -> Bool
    isHeader = unimp "isHeader"
 
+   mergeDominees :: MyBlock -> [MyBlock]
+   mergeDominees x = filter isMergeBlock $ idominees (entryLabel x)
+
+   index label [] = panic "destination label not on stack"
+   index label (frame : stack)
+       | matches label frame = 0
+       | otherwise = 1 + index label stack
+     where matches label (PendingNode b) = label == entryLabel b
+           matches _ _ = False
+
+   idominees :: Label -> [MyBlock] -- sorted with highest rpnum first
+   rpnum :: Label -> RPNum
+   (idominees, rpnum) = (idominees, rpnum)
+       where (dominators, rpnums) = dominatorMap' g
+
+             addToDominees ds label rpnum =
+               case idom label of
+                 EntryNode -> ds
+                 AllNodes -> panic "AllNodes appears as dominator"
+                 NumberedNode { ds_label = dominator } ->
+                     mapAlter (addDominee label rpnum) dominator ds
+
+             dominees :: LabelMap Dominees
+             dominees = mapFoldlWithKey addToDominees mapEmpty rpnums
+
+             idom :: Label -> DominatorSet -- immediate dominator
+             idom lbl = mapFindWithDefault AllNodes lbl dominators
+
+             idominees lbl = map (blockLabeled . fst) $ mapFindWithDefault [] lbl dominees
+
+             addDominee :: Label -> RPNum -> Maybe Dominees -> Maybe Dominees
+             addDominee l rpnum Nothing = Just [(l, rpnum)]
+             addDominee l rpnum (Just pairs) = Just (insert pairs)
+                 where insert [] = [(l, rpnum)]
+                       insert ((l', rpnum') : pairs)
+                           | rpnum > rpnum' = (l, rpnum) : (l', rpnum') : pairs
+                           | otherwise = (l', rpnum') : insert pairs
+                                          
+             rpnum lbl =
+                 mapFindWithDefault (panic "label without reverse postorder number")
+                                    lbl rpnums
+
+
+   isBackward from to = rpnum to < rpnum from
+
+type RPNum = Int
+
+
 unimp :: String -> a
 unimp s = error $ s ++ " not implemented"
 
 flowLeaving :: MyBlock -> ControlFlow e
 flowLeaving b = unimp "flowLeaving"
 
+
+
+type Dominees = [(Label, RPNum)] -- ugh. should be in `where` clause
+
+
+addToList :: (IsMap map) => ([a] -> [a]) -> KeyOf map -> map [a] -> map [a]
+addToList consx = mapAlter add
+    where add Nothing = Just (consx [])
+          add (Just xs) = Just (consx xs)
