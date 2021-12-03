@@ -73,7 +73,7 @@ intersectDomSet' nc ofct@(OldFact (NumberedNode old ol op))
   | otherwise = nc (NumberedNode old ol op)
 
 
--- The rest of the code uses Cmm.Dataflow (Hoopl) to calculate
+-- The code below uses Cmm.Dataflow (Hoopl) to calculate
 -- the dominators of each node.  Because it is not so easy to attach
 -- a reverse postorder number to each node, the code is a little awkward.
 
@@ -97,10 +97,10 @@ dominatorMap' g =
   (analyzeCmmFwd domlattice transfer g startFacts, rpnums)
       where startFacts = mkFactBase domlattice [(g_entry g, EntryNode)]
             transfer block facts =
-                asBase [(successor, NumberedNode (nodenum block) (entryLabel block) incoming)
-                            | successor <- successors block]
-                    where asBase = mkFactBase domlattice
-                          incoming = getFact domlattice (entryLabel block) facts
+                asBase [(successor, outgoing) | successor <- successors block]
+             where asBase = mkFactBase domlattice
+                   incoming = getFact domlattice (entryLabel block) facts
+                   outgoing = NumberedNode (nodenum block) (entryLabel block) incoming
             rpnums :: LabelMap Int
             -- ^ There's no easy way to put a reverse postorder number on each node,
             -- so those numbers are recorded here.
