@@ -5,6 +5,8 @@
 module Peterson
 where
 
+import Prelude hiding (succ)
+
 import GHC.Cmm.Dataflow.Dominators
 
 import Data.Function
@@ -216,10 +218,18 @@ type RPNum = Int
 
 
 unimp :: String -> a
-unimp s = error $ s ++ " not implemented"
+unimp s = panic $ s ++ " not implemented"
 
-flowLeaving :: MyBlock -> ControlFlow e
-flowLeaving b = unimp "flowLeaving"
+flowLeaving :: MyBlock -> ControlFlow CmmExpr
+flowLeaving b =
+    case lastNode b of
+      CmmBranch l -> Unconditional l
+      CmmCondBranch c t f _ -> Conditional c t f
+      CmmSwitch { } -> unimp "switch"
+      CmmCall { cml_cont = Just l } -> Unconditional l
+      CmmCall { cml_cont = Nothing } -> TerminalFlow
+      CmmForeignCall { succ = l } -> Unconditional l
+      
 
 
 
