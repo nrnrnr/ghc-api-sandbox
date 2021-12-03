@@ -22,7 +22,7 @@ import GHC.Cmm
 
 -- | An efficient data structure for representing dominator sets.
 -- For details, see Cooper, Keith D., Timothy J. Harvey, and Ken Kennedy. 
--- A simple, fast dominance algorithm. 2006. 
+-- "A simple, fast dominance algorithm." 2006. 
 
 data DominatorSet = NumberedNode { ds_revpostnum :: RPNum -- ^ reverse postorder number
                                  , ds_label  :: Label
@@ -32,19 +32,30 @@ data DominatorSet = NumberedNode { ds_revpostnum :: RPNum -- ^ reverse postorder
                   | EntryNode
                   | AllNodes -- equivalent of paper's Undefined
 
--- in reverse postorder, nodes closer to the entry have smaller numbers
-
-
 type RPNum = Int  -- should this be a newtype?
 
+-- in reverse postorder, nodes closer to the entry have smaller numbers
 
--- N.B. The original paper uses a mutable data structure which is updated
--- imperatively.  NR thinks it likely that this aspect of the algorithm
--- is not essential to the good performance: what matters is that the
--- number of iterations be small and that intersections be computed quickly.
--- But there are no measurements.
+instance Semigroup DominatorSet where
+    d <> d' = getJoined (intersectDomSet (OldFact d) (NewFact d'))
+      where getJoined (Changed a) = a
+            getJoined (NotChanged a) = a
 
-intersectDomSet :: OldFact DominatorSet -> NewFact DominatorSet -> JoinedFact DominatorSet
+instance Monoid DominatorSet where
+    mempty = AllNodes
+
+
+
+
+-- N.B. The original paper uses a mutable data structure which is
+-- updated imperatively.  This aspect of the algorithm is unlikely to
+-- be essential to the good performance: what matters is that the
+-- number of iterations be small and that intersections be computed
+-- quickly.  But there are no measurements.
+
+intersectDomSet :: OldFact DominatorSet
+                -> NewFact DominatorSet
+                -> JoinedFact DominatorSet
 intersectDomSet = intersectDomSet' NotChanged
 
 intersectDomSet' :: (DominatorSet -> JoinedFact DominatorSet)
@@ -64,7 +75,7 @@ intersectDomSet' nc ofct@(OldFact (NumberedNode old ol op))
 
 -- The rest of the code uses Cmm.Dataflow (Hoopl) to calculate
 -- the dominators of each node.  Because it is not so easy to attach
--- a postorder number to each node, the code is a little awkward.
+-- a reverse postorder number to each node, the code is a little awkward.
 
 domlattice :: DataflowLattice DominatorSet
 domlattice = DataflowLattice AllNodes intersectDomSet
@@ -106,10 +117,3 @@ graphMap :: GenCmmGraph n -> LabelMap (Block n C C)
 graphMap (CmmGraph { g_graph = GMany NothingO blockmap NothingO }) = blockmap
 
 
-instance Semigroup DominatorSet where
-    d <> d' = getJoined (intersectDomSet (OldFact d) (NewFact d'))
-      where getJoined (Changed a) = a
-            getJoined (NotChanged a) = a
-
-instance Monoid DominatorSet where
-    mempty = AllNodes
