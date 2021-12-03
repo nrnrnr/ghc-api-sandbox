@@ -49,7 +49,7 @@ executable showcfg
     other-modules:  StgToCmmLite, StackLang, Simple.Stg, Simple.Stack,
                     Simple.Stg.Outputable,
                     Simple.ImportStg, Simple.Codegen, Simple.Common,
-                    DotCfg, GHC.Cmm.Dataflow.Dominators, Peterson2
+                    DotCfg, GHC.Cmm.Dataflow.Dominators, Peterson
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
