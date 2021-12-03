@@ -42,10 +42,10 @@ dotCFG title (g@CmmGraph { g_graph = GMany NothingO blockmap NothingO, g_entry =
         dmap :: LabelMap DominatorSet
         dmap = dominatorMap g
         dominators lbl = getFact domlattice lbl dmap
-        dominates lbl blockname = has (rpnum lbl) (dominators blockname)
-            where has _ AllNodes = False
-                  has _ EntryNode = False
-                  has n (NumberedNode m _ p) = m == n || has n p
+        dominates lbl blockname = hasLbl (dominators blockname)
+          where hasLbl AllNodes = False
+                hasLbl EntryNode = False
+                hasLbl (NumberedNode _ l p) = l == lbl || hasLbl p
         headers :: LabelSet
         headers = foldMap headersPointedTo blockmap
         headersPointedTo block =

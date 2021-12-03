@@ -153,7 +153,12 @@ structure g = doNode (blockLabeled (g_entry g)) []
           big (_ : _ : _) = True
 
    isHeader :: Label -> Bool
-   isHeader = unimp "isHeader"
+   isHeader = \l -> setMember l headers
+      where headers :: LabelSet
+            headers = foldMap headersPointedTo blockmap
+            headersPointedTo block =
+                setFromList [label | label <- successors block,
+                                              dominates label (entryLabel block)]
 
    mergeDominees :: MyBlock -> [MyBlock]
    mergeDominees x = filter isMergeBlock $ idominees (entryLabel x)
@@ -167,7 +172,8 @@ structure g = doNode (blockLabeled (g_entry g)) []
 
    idominees :: Label -> [MyBlock] -- sorted with highest rpnum first
    rpnum :: Label -> RPNum
-   (idominees, rpnum) = (idominees, rpnum)
+   dominates :: Label -> Label -> Bool
+   (idominees, rpnum, dominates) = (idominees, rpnum, dominates)
        where (dominators, rpnums) = dominatorMap' g
 
              addToDominees ds label rpnum =
@@ -196,6 +202,12 @@ structure g = doNode (blockLabeled (g_entry g)) []
              rpnum lbl =
                  mapFindWithDefault (panic "label without reverse postorder number")
                                     lbl rpnums
+
+             dominates lbl blockname = hasLbl (idom blockname)
+               where hasLbl AllNodes = False
+                     hasLbl EntryNode = False
+                     hasLbl (NumberedNode _ l p) = l == lbl || hasLbl p
+
 
 
    isBackward from to = rpnum to < rpnum from
