@@ -2,7 +2,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FlexibleInstances #-}
 
-module Peterson2
+module Peterson
 where
 
 import GHC.Cmm.Dataflow.Dominators
