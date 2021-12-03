@@ -5,3 +5,5 @@
 *.o
 /app/Main
 /dist
+/?.pdf
+/??.pdf
