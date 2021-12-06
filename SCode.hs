@@ -26,32 +26,37 @@ instance Semigroup SCode where
 instance Monoid SCode where
   mempty = S empty
 
+smallindent :: Int
+bigindent :: Int
+smallindent = 4
+bigindent = 8
+
+
 instance Code SCode where
   type instance CodeExpr SCode = CmmExpr
-  codeLabel l = S $ text "label" <> space <> ppr l <> text ": "
+  codeLabel l = S $ text "label" <+> ppr l <> text ": "
 
-  repeatx l body = S $ text "repeat" <> space <> ppr l $$
-                       nest 2 (unS body) $$
-                       text "end" <> space <> ppr l
+  repeatx l body = S $ text "repeat" <+> ppr l $$
+                       nest smallindent (unS body) $$
+                       text "end repeat" <+> ppr l
 
-  block l body = S $ text "block" <> space <> ppr l $$
-                       nest 2 (unS body) $$
-                       text "end" <> space <> ppr l
+  block l body = S $ text "block" <+> ppr l $$
+                       nest smallindent (unS body) $$
+                       text "end block" <+> ppr l
 
   ifx c l t f =  S $ (unS (codeLabel l)) $$
-                     text "if" <> space <> pprExpr genericPlatform c <> space <> text "then" $$
-                     nest 2 (unS t) $$
+                     text "if" <+> pprExpr genericPlatform c <+> text "then" $$
+                     nest smallindent (unS t) $$
                      text "else" $$
-                     nest 2 (unS f) $$
-                     text "end" <> space <> ppr l
+                     nest smallindent (unS f) $$
+                     text "end if" <+> ppr l
 
-  goto l i = S $ text "exit" <> space <> int i <>
-                 space <> text "(goto " <> ppr l <> text ")"
+  goto l i = S $ text "exit" <+> int i <+> text "(goto " <> ppr l <> text ")"
+
   fallThrough l = S $ text "-- fall through to" <+> ppr l
 
-  continue l i = S $ text "continue" <> space <> int i <>
-                 space <> text "(goto " <> ppr l <> text ")"
+  continue l i = S $ text "continue" <+> int i <+> text "(goto " <> ppr l <> text ")"
 
   gotoExit = S $ text "return"
 
-  codeBody block = S $ nest 4 $ pdoc genericPlatform block
+  codeBody block = S $ nest bigindent $ pdoc genericPlatform block
