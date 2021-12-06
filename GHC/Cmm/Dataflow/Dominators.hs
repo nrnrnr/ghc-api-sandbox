@@ -23,6 +23,10 @@ import GHC.Cmm
 -- | An efficient data structure for representing dominator sets.
 -- For details, see Cooper, Keith D., Timothy J. Harvey, and Ken Kennedy. 
 -- "A simple, fast dominance algorithm." 2006. 
+--
+-- Also relevant: Loukas Georgiadis, Renato F. Werneck, Robert
+-- E. Tarjan, Spyridon Triantafyllis, and David I. August (January 2006).  "Finding
+-- Dominators in Practice."  Journal of Graph Algorithms and Applications 10(1):69-94.
 
 data DominatorSet = NumberedNode { ds_revpostnum :: RPNum -- ^ reverse postorder number
                                  , ds_label  :: Label
