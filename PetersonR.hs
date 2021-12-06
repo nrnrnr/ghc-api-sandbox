@@ -124,9 +124,7 @@ structuredControl g = doBlock (blockLabeled (g_entry g)) []
 
    -- case 2
    doBranch from to stack 
-      | isBackward from to = -- continue to i
-            if hasnt stack to then failedContinue to (ppr stack)
-            else continue to i
+      | isBackward from to = continue to i
            -- case 1 step 4
       | isMergeLabel to = if i == 0 then fallThrough to else goto to i
               -- no code needed if destinaation is on top of stack
@@ -196,12 +194,6 @@ structuredControl g = doBlock (blockLabeled (g_entry g)) []
      where matches label (PendingNode b) = label == entryLabel b
            matches label (EndLoop l) = label == l
            matches _ _ = False
-
-   hasnt stack label = all isntLabel stack
-    where
-     isntLabel (EndLoop l) = label /= l
-     isntLabel (PendingNode b) = label /= entryLabel b
-     isntLabel _ = True
 
    idominees :: Label -> [MyBlock] -- sorted with highest rpnum first
    (idominees, rpnum, dominates) = (idominees, rpnum, dominates)
