@@ -90,14 +90,14 @@ structuredControl g = doBlock (blockLabeled (g_entry g)) []
    doBegins :: MyBlock -> [MyBlock] -> Stack -> c
    doBranch :: Label -> Label -> Stack -> c
 
-   doBlock x stack = codeLabel (entryLabel x) <> doBegins x (mergeDominees x) stack
+   doBlock x stack = doBegins x (mergeDominees x) stack
      -- case 1 step 2 (done before step 1)
      -- note mergeDominees must be ordered with largest RP number first
 
    doBegins x (y:ys) stack =
        block (entryLabel y) (doBegins x ys (PendingNode y:stack)) <> doBlock y stack
    doBegins x [] stack =
-       -- codeLabel xlabel <>
+       codeLabel xlabel <>
        if isHeader xlabel then repeatx xlabel (continue x (EndLoop xlabel : stack))
        else continue x stack
 
