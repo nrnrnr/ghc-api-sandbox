@@ -36,12 +36,11 @@ instance Code SCode where
   type instance CodeExpr SCode = CmmExpr
   codeLabel l = S $ text "label" <+> ppr l <> text ": "
 
-  repeatx l body = S $ text "repeat" <+> ppr l <> text "Y" $$
-                       text "Z" <>
+  repeatx l body = S $ text "repeat" <+> ppr l $+$
                        nest smallindent (unS body) $$
                        text "end repeat" <+> ppr l
 
-  block l body = S $ text "block" <+> ppr l $$
+  block l body = S $ text "block" <+> ppr l $+$
                        nest smallindent (unS body) $$
                        text "end block" <+> ppr l
 
