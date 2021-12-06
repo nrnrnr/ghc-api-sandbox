@@ -44,8 +44,7 @@ instance Code SCode where
                        nest smallindent (unS body) $$
                        text "end block" <+> ppr l
 
-  ifx c l t f =  S $ (unS (codeLabel l)) $$
-                     text "if" <+> pprExpr genericPlatform c <+> text "then" $$
+  ifx c l t f =  S $ text "if" <+> pprExpr genericPlatform c <+> text "then" $$
                      nest smallindent (unS t) $$
                      text "else" $$
                      nest smallindent (unS f) $$
