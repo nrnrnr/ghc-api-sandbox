@@ -137,7 +137,8 @@ structuredControl g = doBlock (blockLabeled (g_entry g)) []
 
    blockLabeled :: Label -> MyBlock
    rpnum :: Label -> RPNum -- ^ reverse postorder number of the labeled block
-   preds :: Label -> [Label] -- ^ reachable predecessors of reachable blocks
+   forwardPreds :: Label -> [Label] -- ^ reachable predecessors of reachable blocks,
+                                   -- via forward edges only
    isMergeLabel :: Label -> Bool
    isMergeBlock :: MyBlock -> Bool
    isHeader :: Label -> Bool -- ^ identify loop headers
@@ -162,16 +163,19 @@ structuredControl g = doBlock (blockLabeled (g_entry g)) []
            a
            [(entryLabel from, to) | from <- rpblocks, to <- successors from]
 
-   preds = \l -> mapFindWithDefault [] l predmap
+   forwardPreds = \l -> mapFindWithDefault [] l predmap
        where predmap :: LabelMap [Label]
-             predmap = foldEdges (\from to pm -> addToList (from :) to pm) mapEmpty
+             predmap = foldEdges addForwardEdge mapEmpty
+             addForwardEdge from to pm
+                 | isBackward from to = pm
+                 | otherwise = addToList (from :) to pm
 
    isMergeLabel l = setMember l mergeNodes
    isMergeBlock = isMergeLabel . entryLabel                   
 
    mergeNodes :: LabelSet
-   mergeNodes = setFromList [entryLabel n | n <- rpblocks, big (preds (entryLabel n))]
-          -- XXX need to filter out backward branches
+   mergeNodes =
+       setFromList [entryLabel n | n <- rpblocks, big (forwardPreds (entryLabel n))]
     where big [] = False
           big [_] = False
           big (_ : _ : _) = True
