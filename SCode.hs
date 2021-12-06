@@ -51,4 +51,4 @@ instance Code SCode where
 
   gotoExit = S $ text "return"
 
-  codeBody _block = S $ text "block body"
+  codeBody block = S $ nest 4 $ pdoc genericPlatform block
