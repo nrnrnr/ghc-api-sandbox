@@ -36,7 +36,8 @@ instance Code SCode where
   type instance CodeExpr SCode = CmmExpr
   codeLabel l = S $ text "label" <+> ppr l <> text ": "
 
-  repeatx l body = S $ text "repeat" <+> ppr l $$
+  repeatx l body = S $ text "repeat" <+> ppr l <> text "Y" $$
+                       text "Z" <>
                        nest smallindent (unS body) $$
                        text "end repeat" <+> ppr l
 
@@ -50,11 +51,13 @@ instance Code SCode where
                      nest smallindent (unS f) $$
                      text "end if" <+> ppr l
 
-  goto l i = S $ text "exit" <+> int i <+> text "(goto " <> ppr l <> text ")"
+  goto l i = S $ text "exit" <+> int i <+> text "(goto" <+> ppr l <> text ")"
 
   fallThrough l = S $ text "-- fall through to" <+> ppr l
 
-  continue l i = S $ text "continue" <+> int i <+> text "(goto " <> ppr l <> text ")"
+  continue l i = S $ text "continue" <+> int i <+> text "(goto" <+> ppr l <> text ")"
+  failedContinue l doc =
+      S $ text "continue FAILED" <+> text "(goto" <+> ppr l <> text ")" <+> doc
 
   gotoExit = S $ text "return"
 

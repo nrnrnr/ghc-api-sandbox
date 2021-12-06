@@ -20,6 +20,7 @@ import GHC.Cmm.Dataflow.Collections
 import GHC.Cmm.Dataflow.Graph
 import GHC.Cmm.Dataflow.Label
 import GHC.Utils.Panic
+import GHC.Utils.Outputable (Outputable, SDoc, text, (<+>), ppr)
 
 type MyBlock = CmmBlock
 
@@ -41,6 +42,9 @@ class (Monoid c) => Code c where
   goto        :: Label -> Int -> c  -- ^ exit; translates as `br k`
   fallThrough :: Label -> c  -- ^ generates no code; used to help debug
   continue :: Label -> Int -> c  -- ^ restart loop; translates as `br k`
+
+  failedContinue :: Label -> SDoc -> c -- ^ tried to continue but there's no target on the stack
+
 
   gotoExit :: c -- ^ stop the function (return or tail call)
 
@@ -69,6 +73,11 @@ data StackFrame = PendingElse Label Label -- ^ YT
                 | PendingNode MyBlock     -- ^ ordinary node
                 | EndLoop Label           -- ^ Peterson end node
 
+instance Outputable StackFrame where
+    ppr (PendingElse _ tl) = text "else" <+> ppr tl
+    ppr (PendingEndif) = text "endif"
+    ppr (PendingNode b) = text "node" <+> ppr (entryLabel b)
+    ppr (EndLoop l) = text "loop" <+> ppr l
 
 -- | Convert a Cmm CFG to structured control flow.
 -- The resulting code is intended to be peephole optimized.
@@ -98,11 +107,11 @@ structuredControl g = doBlock (blockLabeled (g_entry g)) []
        block (entryLabel y) (doBegins x ys (PendingNode y:stack)) <> doBlock y stack
    doBegins x [] stack =
        codeLabel xlabel <>
-       if isHeader xlabel then repeatx xlabel (continue x (EndLoop xlabel : stack))
-       else continue x stack
+       if isHeader xlabel then repeatx xlabel (emitBlock x (EndLoop xlabel : stack))
+       else emitBlock x stack
 
      -- rolls together case 1 step 6, case 2 step 1, case 2 step 3
-     where continue x stack =
+     where emitBlock x stack =
              codeBody x <>
              case flowLeaving x of
                Unconditional l -> doBranch xlabel l stack -- case 1 step 6
@@ -115,16 +124,16 @@ structuredControl g = doBlock (blockLabeled (g_entry g)) []
 
    -- case 2
    doBranch from to stack 
-      | isBackward from to = continue to i
+      | isBackward from to = -- continue to i
+            if hasnt stack to then failedContinue to (ppr stack)
+            else continue to i
            -- case 1 step 4
       | isMergeLabel to = if i == 0 then fallThrough to else goto to i
               -- no code needed if destinaation is on top of stack
       | otherwise = doBlock (blockLabeled to) stack
      where i = index to stack
-           
 
    ---- everything else here is utility functions
-
 
    blockLabeled :: Label -> MyBlock
    rpnum :: Label -> RPNum -- ^ reverse postorder number of the labeled block
@@ -181,7 +190,14 @@ structuredControl g = doBlock (blockLabeled (g_entry g)) []
        | matches label frame = 0
        | otherwise = 1 + index label stack
      where matches label (PendingNode b) = label == entryLabel b
+           matches label (EndLoop l) = label == l
            matches _ _ = False
+
+   hasnt stack label = all isntLabel stack
+    where
+     isntLabel (EndLoop l) = label /= l
+     isntLabel (PendingNode b) = label /= entryLabel b
+     isntLabel _ = True
 
    idominees :: Label -> [MyBlock] -- sorted with highest rpnum first
    (idominees, rpnum, dominates) = (idominees, rpnum, dominates)
