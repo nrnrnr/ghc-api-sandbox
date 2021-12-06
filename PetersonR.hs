@@ -224,14 +224,15 @@ structuredControl g = doBlock (blockLabeled (g_entry g)) []
                  mapFindWithDefault (panic "label without reverse postorder number")
                                     lbl rpnums
 
-             dominates lbl blockname = hasLbl (idom blockname)
+             dominates lbl blockname = lbl == blockname || hasLbl (idom blockname)
                where hasLbl AllNodes = False
                      hasLbl EntryNode = False
                      hasLbl (NumberedNode _ l p) = l == lbl || hasLbl p
 
 
 
-   isBackward from to = rpnum to < rpnum from
+   isBackward from to = rpnum to <= rpnum from -- self-edge counts as a backward edge
+    -- XXX need to test a graph with a self-edge
 
 
 flowLeaving :: MyBlock -> ControlFlow CmmExpr

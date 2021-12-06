@@ -42,7 +42,7 @@ dotCFG title (g@CmmGraph { g_graph = GMany NothingO blockmap NothingO, g_entry =
         dmap :: LabelMap DominatorSet
         dmap = dominatorMap g
         dominators lbl = getFact domlattice lbl dmap
-        dominates lbl blockname = hasLbl (dominators blockname)
+        dominates lbl blockname = lbl == blockname || hasLbl (dominators blockname)
           where hasLbl AllNodes = False
                 hasLbl EntryNode = False
                 hasLbl (NumberedNode _ l p) = l == lbl || hasLbl p
@@ -105,7 +105,7 @@ dotDominators (NumberedNode n _ parent) = int n <> text " -> " <> dotDominators 
 
 dotEdge :: (Label -> Int) -> (Label, Label) -> SDoc
 dotEdge rpnum (from, to) = dotName from <> text "->" <> dotName to <> style <> text ";"
-  where style = if rpnum to < rpnum from then
+  where style = if rpnum to <= rpnum from then
                     space <> text "[color=\"blue\"]"
                 else
                     empty
