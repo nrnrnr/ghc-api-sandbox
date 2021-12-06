@@ -2,6 +2,8 @@
 {-# LANGUAGE TypeFamilies #-}
 
 module SCode
+  ( SCode(..)
+  )
 where
 
 import PetersonR
