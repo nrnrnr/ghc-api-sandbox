@@ -9,7 +9,8 @@ import DotCfg
 import Control.Monad
 import Control.Monad.IO.Class
 
---import PetersonR
+import PetersonR
+import SCode
 
 import System.FilePath as FilePath
 
@@ -48,15 +49,6 @@ showGraph = do
         setSessionDynFlags dflags
         let sdctx = initSDocContext dflags defaultUserStyle
         mapM_ (processCmm sdctx) args
---        targets <- mapM (\path -> guessTarget path Nothing Nothing) args
---        setTargets targets
---        mgraph <- depanal [] False
---        mapM_ (\s -> --dumpSummary sdctx s >>
-                     --liftIO (putStrLn "/* .............. */") >>
-                     --dumpStg sdctx s >>
-                     --liftIO (putStrLn "/* ------------------- */") >>
-                     --dumpCmm sdctx s
---                     return ()) $ mgModSummaries mgraph
   where thelibdir = libdir
 
 processCmm :: SDocContext -> FilePath -> Ghc ()
@@ -93,6 +85,7 @@ dumpGroup context platform = mapM_ (decl platform)
                 , OutputableP Platform h
                 , OutputableP Platform (GenCmmGraph node)
                 , NonLocal node
+                , node ~ CmmNode
                 )
                 => Platform
                 -> GenCmmDecl d h (GenCmmGraph node)
@@ -102,6 +95,12 @@ dumpGroup context platform = mapM_ (decl platform)
           pprout context $ pdoc platform d
         decl platform (CmmProc h entry registers graph) = do
           printSDocLn context (PageMode True) stdout $ dotCFG (ppr entry) graph
+          when True $ do
+            putStrLn "/* ============="
+            let code = structuredControl graph :: SCode
+            pprout context $ unS code
+            putStrLn "============== */"
+            
           when True $ do
             putStrLn "/*********"
             pprout context $ pdoc platform h

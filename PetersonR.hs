@@ -2,6 +2,9 @@
 {-# LANGUAGE TypeFamilies #-}
 
 module PetersonR
+  ( structuredControl
+  , Code(..)
+  )
 where
 
 import Prelude hiding (succ)
@@ -68,9 +71,9 @@ data StackFrame = PendingElse Label Label -- ^ YT
 
 -- | Convert a Cmm CFG to structured control flow.
 -- The resulting code is intended to be peephole optimized.
-structure :: forall c node . (node ~ CmmNode, Code c, CodeExpr c ~ CmmExpr)
+structuredControl :: forall c node . (node ~ CmmNode, Code c, CodeExpr c ~ CmmExpr)
           => GenCmmGraph node -> c
-structure g = doBlock (blockLabeled (g_entry g)) []
+structuredControl g = doBlock (blockLabeled (g_entry g)) []
  where
 
    -- | `doBlock` basically handles Peterson's case 1: it emits code 
