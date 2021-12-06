@@ -26,7 +26,7 @@ instance Monoid SCode where
 
 instance Code SCode where
   type instance CodeExpr SCode = CmmExpr
-  codeLabel l = S $ ppr l <> text ": "
+  codeLabel l = S $ text "label" <> space <> ppr l <> text ": "
 
   repeatx l body = S $ text "repeat" <> space <> ppr l $$
                        nest 2 (unS body) $$
