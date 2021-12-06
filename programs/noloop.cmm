@@ -1,20 +1,22 @@
 noloop (bits32 n) {
   A:
-    bits32[n] = 101;
+    foreign "C" A();
     if (n > 0) goto B;
   G:
-    bits32[n] = 107;
+    foreign "C" G();
     if (n > 7) goto F;
   E:
+    foreign "C" E();
     return (0);
   B: 
-    bits32[n] = 102;
+    foreign "C" B();
     if (n > 2) goto C;
   F:
-    bits32[n] = 106;
+    foreign "C" F();
     goto D;
   C:
-    bits32[n] = 103;
+    foreign "C" C();
   D:
+    foreign "C" D();
     goto E;
 }
