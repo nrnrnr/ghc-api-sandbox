@@ -97,7 +97,7 @@ structuredControl g = doBlock (blockLabeled (g_entry g)) []
    doBegins x (y:ys) stack =
        block (entryLabel y) (doBegins x ys (PendingNode y:stack)) <> doBlock y stack
    doBegins x [] stack =
-       codeLabel xlabel <>
+       -- codeLabel xlabel <>
        if isHeader xlabel then repeatx xlabel (continue x (EndLoop xlabel : stack))
        else continue x stack
 
