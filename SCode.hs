@@ -47,6 +47,7 @@ instance Code SCode where
 
   goto l i = S $ text "exit" <> space <> int i <>
                  space <> text "(goto " <> ppr l <> text ")"
+  fallThrough l = S $ text "-- fall through to" <+> ppr l
 
   continue l i = S $ text "continue" <> space <> int i <>
                  space <> text "(goto " <> ppr l <> text ")"

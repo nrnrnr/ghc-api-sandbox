@@ -38,7 +38,8 @@ class (Monoid c) => Code c where
 
   block :: Label -> c -> c  -- ^ put code in block so `goto` can be replace with `exit`
 
-  goto     :: Label -> Int -> c  -- ^ exit; translates as `br k`
+  goto        :: Label -> Int -> c  -- ^ exit; translates as `br k`
+  fallThrough :: Label -> c  -- ^ generates no code; used to help debug
   continue :: Label -> Int -> c  -- ^ restart loop; translates as `br k`
 
   gotoExit :: c -- ^ stop the function (return or tail call)
@@ -114,10 +115,12 @@ structuredControl g = doBlock (blockLabeled (g_entry g)) []
 
    -- case 2
    doBranch from to stack 
-     | isBackward from to = continue to (index to stack)
-          -- case 1 step 4
-     | isMergeLabel to = goto to (index to stack) -- could be omitted if to on top of stack
-     | otherwise = doBlock (blockLabeled to) stack
+      | isBackward from to = continue to i
+           -- case 1 step 4
+      | isMergeLabel to = if i == 0 then fallThrough to else goto to i
+              -- no code needed if destinaation is on top of stack
+      | otherwise = doBlock (blockLabeled to) stack
+     where i = index to stack
            
 
    ---- everything else here is utility functions
