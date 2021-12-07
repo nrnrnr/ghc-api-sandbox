@@ -27,6 +27,7 @@ import GHC.Utils.Outputable
 import GHC.Utils.Ppr (Mode(PageMode))
 
 import GHC.Cmm
+import GHC.Cmm.ContFlowOpt
 import GHC.Cmm.Dataflow.Graph
 import GHC.Cmm.Parser
 
@@ -79,7 +80,7 @@ slurpCmm hsc_env filename = runHsc hsc_env $ do
 
 
 dumpGroup :: SDocContext -> Platform -> CmmGroup -> IO ()
-dumpGroup context platform = mapM_ (decl platform)
+dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
   where
         decl :: ( OutputableP Platform d
                 , OutputableP Platform h
