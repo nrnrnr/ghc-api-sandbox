@@ -1,6 +1,0 @@
-#!/bin/ksh
-
-export STAGE1=/home/nr/asterius/ghc/_build/stage1
-
-$STAGE1/bin/ghc -package-env - -clear-package-db -package-db $STAGE1/lib/package.conf.d -package-id ghc-9.3 \
-  --make -o Main Main.hs StgToCmmLite.hs
