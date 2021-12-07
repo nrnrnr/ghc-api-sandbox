@@ -66,7 +66,8 @@ executable ptest
     main-is:          PTest.hs
 
     -- Modules included in this executable, other than Main.
-    other-modules:  GHC.Cmm.Dataflow.Dominators, DotCfg, PetersonR, SCode
+    other-modules:  GHC.Cmm.Dataflow.Dominators, DotCfg, PetersonR, SCode,
+                    GHC.Wasm.ControlFlow
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
