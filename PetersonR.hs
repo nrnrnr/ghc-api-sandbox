@@ -31,6 +31,8 @@ type MyBlock = CmmBlock
 
 class (Monoid c) => Code c where
   type CodeExpr c :: Type
+  -- c is a statement
+  -- CodeExpr c is an expression, such as might appear as an `if` condition
   codeLabel :: Label -> c
 
   repeatx :: Label -> c -> c
