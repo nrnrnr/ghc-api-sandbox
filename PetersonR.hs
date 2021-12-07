@@ -53,11 +53,15 @@ instance Outputable StackFrame where
     ppr (PendingNode b) = text "node" <+> ppr (entryLabel b)
     ppr (EndLoop l) = text "loop" <+> ppr l
 
--- | Convert a Cmm CFG to structured control flow.
--- The resulting code is intended to be peephole optimized.
-structuredControl :: forall c node . (node ~ CmmNode, Code c, CodeExpr c ~ CmmExpr)
-          => GenCmmGraph node -> c
-structuredControl g = doBlock (blockLabeled (g_entry g)) []
+-- | Convert a Cmm CFG to structured control flow expressed as
+-- a `WasmStmt`.
+
+structuredControl :: forall node e s . (node ~ CmmNode)
+                  => (CmmExpr -> e) -- ^ translator for expressions
+                  -> (Block node O O -> s) -- ^ translator for straight-line code
+                  -> GenCmmGraph node -- ^ CFG to be translated
+                  -> WasmStmt s e
+structuredControl txExpr txBlock g = doBlock (blockLabeled (g_entry g)) []
  where
 
    -- | `doBlock` basically handles Peterson's case 1: it emits code 
@@ -69,20 +73,23 @@ structuredControl g = doBlock (blockLabeled (g_entry g)) []
    -- implemented by falling through or by a `br` instruction 
    -- created with `exit` or `continue`.
 
-   doBlock  :: MyBlock -> Stack -> c
-   doBegins :: MyBlock -> [MyBlock] -> Stack -> c
-   doBranch :: Label -> Label -> Stack -> c
+   doBlock  :: MyBlock -> Stack -> WasmStmt s e
+   doBegins :: MyBlock -> [MyBlock] -> Stack -> WasmStmt s e
+   doBranch :: Label -> Label -> Stack -> WasmStmt s e
 
    doBlock x stack = doBegins x (mergeDominees x) stack
      -- case 1 step 2 (done before step 1)
      -- note mergeDominees must be ordered with largest RP number first
 
    doBegins x (y:ys) stack =
-       block (entryLabel y) (doBegins x ys (PendingNode y:stack)) <> doBlock y stack
+       blockEndingIn y (doBegins x ys (PendingNode y:stack)) <> doBlock y stack
+     where blockEndingIn y = wasmLabeled (entryLabel y) WasmBlock
    doBegins x [] stack =
-       codeLabel xlabel <>
-       if isHeader xlabel then repeatx xlabel (emitBlock x (EndLoop xlabel : stack))
-       else emitBlock x stack
+       WasmLabel (Labeled xlabel undefined) <>
+       if isHeader xlabel then
+           wasmLabeled  xlabel WasmLoop (emitBlock x (EndLoop xlabel : stack))
+       else
+           emitBlock x stack
 
      -- rolls together case 1 step 6, case 2 step 1, case 2 step 3
      where emitBlock x stack =
@@ -90,18 +97,19 @@ structuredControl g = doBlock (blockLabeled (g_entry g)) []
              case flowLeaving x of
                Unconditional l -> doBranch xlabel l stack -- case 1 step 6
                Conditional e t f -> -- case 1 step 5
-                 ifx e xlabel (doBranch xlabel t (PendingElse xlabel f : stack))
-                              (doBranch xlabel f (PendingEndif : stack))
-               TerminalFlow -> gotoExit
+                 wasmLabeled xlabel WasmIf
+                      (txExpr e)
+                      (doBranch xlabel t (PendingElse xlabel f : stack))
+                      (doBranch xlabel f (PendingEndif : stack))
+               TerminalFlow -> WasmReturn
                   -- case 1 step 6, case 2 steps 2 and 3
            xlabel = entryLabel x
 
    -- case 2
    doBranch from to stack 
-      | isBackward from to = continue to i
+      | isBackward from to = WasmContinue to i
            -- case 1 step 4
-      | isMergeLabel to = if i == 0 then fallThrough to else goto to i
-              -- no code needed if destinaation is on top of stack
+      | isMergeLabel to = WasmExit to i
       | otherwise = doBlock (blockLabeled to) stack
      where i = index to stack
 
@@ -120,6 +128,9 @@ structuredControl g = doBlock (blockLabeled (g_entry g)) []
      -- so the largest RP number is pushed on the stack first.
    dominates :: Label -> Label -> Bool
      -- ^ Domination relation (not just immediate domination)
+
+   codeBody :: Block CmmNode C C -> WasmStmt s e
+   codeBody (BlockCC _first middle _last) = WasmSlc (txBlock middle)
 
 
 
@@ -229,3 +240,5 @@ addToList :: (IsMap map) => ([a] -> [a]) -> KeyOf map -> map [a] -> map [a]
 addToList consx = mapAlter add
     where add Nothing = Just (consx [])
           add (Just xs) = Just (consx xs)
+
+
