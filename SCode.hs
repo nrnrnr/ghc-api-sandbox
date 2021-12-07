@@ -61,3 +61,14 @@ instance Code SCode where
   gotoExit = S $ text "return"
 
   codeBody block = S $ nest bigindent $ pdoc genericPlatform block
+
+  switch e targets other = S $
+    text "switch" <+> parens (pprExpr genericPlatform e) $$
+    nest smallindent (
+      vcat (zipWith knownCase targets [0..]) $$
+      unknownCase other) $$
+    text "end switch"
+   where knownCase (lbl, tnum) i = text "case" <+> int i <> text ":" <+> rhs lbl tnum
+         rhs lbl tnum = text "br" <+> int tnum <+> text "(goto" <+> ppr lbl <> text ")"
+         unknownCase (lbl, tnum) = text "default:" <+> rhs lbl tnum              
+          

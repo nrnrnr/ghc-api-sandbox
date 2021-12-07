@@ -47,6 +47,8 @@ class (Monoid c) => Code c where
 
   failedContinue :: Label -> SDoc -> c -- ^ tried to continue but there's no target on the stack
 
+  switch :: CodeExpr c -> [(Label, Int)] -> (Label, Int) -> c
+
 
   gotoExit :: c -- ^ stop the function (return or tail call)
 
