@@ -101,7 +101,7 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
         decl platform (CmmProc h entry registers graph) = do
           printSDocLn context (PageMode True) stdout $ dotCFG (ppr entry) graph
           when True $ do
-            putStrLn "/* ============= S CONTROL HERE"
+            putStrLn "/* ============= "
             let code = structuredControl id id graph
             pprout context $ pdoc platform code
             putStrLn "============== */"
