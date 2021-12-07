@@ -3,16 +3,18 @@
 
 module SCode
   ( SCode(..)
+  , Code(..)
   )
 where
 
-import PetersonR
-
 import Prelude hiding ((<>))
+
+import Data.Kind
 
 import qualified GHC.Base as B
 
 import GHC.Cmm
+import GHC.Cmm.Dataflow.Label
 import GHC.Cmm.Ppr
 import GHC.Platform
 import GHC.Utils.Outputable
@@ -72,3 +74,30 @@ instance Code SCode where
          rhs lbl tnum = text "br" <+> int tnum <+> text "(goto" <+> ppr lbl <> text ")"
          unknownCase (lbl, tnum) = text "default:" <+> rhs lbl tnum              
           
+
+
+class (Monoid c) => Code c where
+  type CodeExpr c :: Type
+  -- c is a statement
+  -- CodeExpr c is an expression, such as might appear as an `if` condition
+  codeLabel :: Label -> c
+
+  repeatx :: Label -> c -> c
+
+  ifx :: CodeExpr c -> Label -> c -> c -> c --
+
+  block :: Label -> c -> c  -- ^ put code in block so `goto` can be replace with `exit`
+
+  goto        :: Label -> Int -> c  -- ^ exit; translates as `br k`
+  fallThrough :: Label -> c  -- ^ generates no code; used to help debug
+  continue :: Label -> Int -> c  -- ^ restart loop; translates as `br k`
+
+  failedContinue :: Label -> SDoc -> c -- ^ tried to continue but there's no target on the stack
+
+  switch :: CodeExpr c -> [(Label, Int)] -> (Label, Int) -> c
+
+
+  gotoExit :: c -- ^ stop the function (return or tail call)
+
+  codeBody :: CmmBlock -> c -- ^ straight-line code
+

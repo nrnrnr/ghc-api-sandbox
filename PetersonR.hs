@@ -3,7 +3,6 @@
 
 module PetersonR
   ( structuredControl
-  , Code(..)
   )
 where
 
@@ -11,7 +10,6 @@ import Prelude hiding (succ)
 
 import GHC.Cmm.Dataflow.Dominators
 
-import Data.Kind
 import Data.Maybe
 
 import GHC.Cmm
@@ -20,39 +18,11 @@ import GHC.Cmm.Dataflow.Collections
 import GHC.Cmm.Dataflow.Graph
 import GHC.Cmm.Dataflow.Label
 import GHC.Utils.Panic
-import GHC.Utils.Outputable (Outputable, SDoc, text, (<+>), ppr)
+import GHC.Utils.Outputable (Outputable, text, (<+>), ppr)
+
+import GHC.Wasm.ControlFlow
 
 type MyBlock = CmmBlock
-
--- | The type of code ("statements") we intend to emit.
--- This might be a sequence of Wasm instructions.
--- Type `CodeExpr c` is the type of expressions that 
--- can appear as a condition in an `if`.
-
-class (Monoid c) => Code c where
-  type CodeExpr c :: Type
-  -- c is a statement
-  -- CodeExpr c is an expression, such as might appear as an `if` condition
-  codeLabel :: Label -> c
-
-  repeatx :: Label -> c -> c
-
-  ifx :: CodeExpr c -> Label -> c -> c -> c --
-
-  block :: Label -> c -> c  -- ^ put code in block so `goto` can be replace with `exit`
-
-  goto        :: Label -> Int -> c  -- ^ exit; translates as `br k`
-  fallThrough :: Label -> c  -- ^ generates no code; used to help debug
-  continue :: Label -> Int -> c  -- ^ restart loop; translates as `br k`
-
-  failedContinue :: Label -> SDoc -> c -- ^ tried to continue but there's no target on the stack
-
-  switch :: CodeExpr c -> [(Label, Int)] -> (Label, Int) -> c
-
-
-  gotoExit :: c -- ^ stop the function (return or tail call)
-
-  codeBody :: MyBlock -> c -- ^ straight-line code
 
 
 
