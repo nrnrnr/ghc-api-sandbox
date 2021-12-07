@@ -76,6 +76,15 @@ pattern WasmContinue l i = WasmBr (BranchTyped ContinueBranch (Labeled l i))
 wasmLabeled :: Label -> (Labeled a -> b) -> a -> b
 wasmLabeled l c a = c (Labeled l a)
 
+
+
+instance Semigroup (WasmStmt s e) where
+  (<>) = WasmSeq
+
+instance Monoid (WasmStmt s e) where
+  mempty = WasmNop
+
+
 wasmPeepholeOpt :: WasmStmt s e -> WasmStmt s e
 wasmPeepholeOpt _ = panic "peephole optimizer not implemented"
 
