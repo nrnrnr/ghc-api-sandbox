@@ -4,10 +4,15 @@
 module GHC.Wasm.ControlFlow 
   ( WasmStmt(..), Labeled(..), BranchTyped(..), BranchType(..)
   , pattern WasmExit, pattern WasmContinue
+
+  , wasmLabeled
+
   , wasmPeepholeOpt
   , wasmControlFaults
   )
 where
+
+import Data.Void
 
 import GHC.Cmm.Dataflow.Label (Label)
 import GHC.Utils.Outputable
@@ -60,12 +65,16 @@ data WasmStmt s e where
   WasmSlc :: s -> WasmStmt s e   -- straight-line code
   WasmSeq :: WasmStmt s e -> WasmStmt s e -> WasmStmt s e
 
+  WasmLabel :: Labeled Void -> WasmStmt s e -- pure sanity-checking play
+
 pattern WasmExit :: Label -> Int -> WasmStmt s e
 pattern WasmContinue :: Label -> Int -> WasmStmt s e
 
 pattern WasmExit     l i = WasmBr (BranchTyped ExitBranch     (Labeled l i))
 pattern WasmContinue l i = WasmBr (BranchTyped ContinueBranch (Labeled l i))
 
+wasmLabeled :: Label -> (Labeled a -> b) -> a -> b
+wasmLabeled l c a = c (Labeled l a)
 
 wasmPeepholeOpt :: WasmStmt s e -> WasmStmt s e
 wasmPeepholeOpt _ = panic "peephole optimizer not implemented"
