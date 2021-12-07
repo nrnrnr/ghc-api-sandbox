@@ -10,7 +10,7 @@ import Control.Monad
 import Control.Monad.IO.Class
 
 import PetersonR
-import SCode
+-- import SCode
 
 import System.FilePath as FilePath
 
@@ -30,9 +30,13 @@ import GHC.Cmm
 import GHC.Cmm.ContFlowOpt
 import GHC.Cmm.Dataflow.Graph
 import GHC.Cmm.Parser
+import GHC.Cmm.Ppr()
 
 import System.Environment ( getArgs )
 import System.IO (stdout)
+
+--import GHC.Wasm.ControlFlow
+import GHC.Wasm.Ppr.Control()
 
 libdir :: String
 libdir = "/home/nr/asterius/ghc/_build/stage1/lib"
@@ -97,9 +101,9 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
         decl platform (CmmProc h entry registers graph) = do
           printSDocLn context (PageMode True) stdout $ dotCFG (ppr entry) graph
           when True $ do
-            putStrLn "/* ============="
-            let code = structuredControl graph :: SCode
-            pprout context $ unS code
+            putStrLn "/* ============= S CONTROL HERE"
+            let code = structuredControl id id graph
+            pprout context $ pdoc platform code
             putStrLn "============== */"
             
           when True $ do
@@ -109,7 +113,6 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
             putStr "global registers" >> pprout context registers
             pprout context $ pdoc platform graph
             putStrLn "*********/"
-
 
 
 
