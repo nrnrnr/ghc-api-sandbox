@@ -8,6 +8,7 @@ module GHC.Wasm.ControlFlow
   , pattern WasmExit, pattern WasmContinue
 
   , wasmLabeled
+  , wasmUnlabeled
 
   , wasmPeepholeOpt
   , wasmControlFaults
@@ -16,7 +17,7 @@ where
 
 import Data.Void
 
-import GHC.Cmm.Dataflow.Label (Label)
+import GHC.Cmm.Dataflow.Label (Label, mkHooplLabel)
 import GHC.Utils.Outputable
 import GHC.Utils.Panic
 
@@ -75,13 +76,15 @@ data WasmStmt s e where
 
   WasmBr   :: BranchTyped (Labeled Int) -> WasmStmt s e
   WasmBrIf :: e -> BranchTyped (Labeled Int) -> WasmStmt s e
-  WasmBrTable :: [Labeled Int] -> Labeled Int -> WasmStmt s e
+  WasmBrTable :: e -> [Labeled Int] -> Labeled Int -> WasmStmt s e
   WasmReturn :: WasmStmt s e
 
   WasmSlc :: s -> WasmStmt s e   -- straight-line code
   WasmSeq :: WasmStmt s e -> WasmStmt s e -> WasmStmt s e
 
   WasmLabel :: Labeled Void -> WasmStmt s e -- pure sanity-checking play
+
+  WasmUnreachable :: WasmStmt s e
 
 pattern WasmExit :: Label -> Int -> WasmStmt s e
 pattern WasmContinue :: Label -> Int -> WasmStmt s e
@@ -92,6 +95,11 @@ pattern WasmContinue l i = WasmBr (BranchTyped ContinueBranch (Labeled l i))
 wasmLabeled :: Label -> (Labeled a -> b) -> a -> b
 wasmLabeled l c a = c (Labeled l a)
 
+wasmUnlabeled :: (Labeled a -> b) -> a -> b
+wasmUnlabeled = wasmLabeled bogusLabel -- XXX ugh
+
+bogusLabel :: Label
+bogusLabel = mkHooplLabel (-1)
 
 
 instance Semigroup (WasmStmt s e) where
@@ -106,3 +114,4 @@ wasmPeepholeOpt _ = panic "peephole optimizer not implemented"
 
 wasmControlFaults :: WasmStmt s e -> Maybe SDoc
 wasmControlFaults _ = panic "fault checking not implemented"
+

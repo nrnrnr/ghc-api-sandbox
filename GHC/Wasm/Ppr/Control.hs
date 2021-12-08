@@ -22,6 +22,8 @@ pprStmt :: (OutputableP env s, OutputableP env e) => env -> WasmStmt s e -> SDoc
 
 pprStmt _ WasmNop = text "nop"
 
+pprStmt _ WasmUnreachable = text "unreachable"
+
 pprStmt env (WasmBlock (Labeled l body)) =
     text "block" <+> text ";; label =" <+> ppr l $+$
     nest smallindent (pprStmt env body) $+$
@@ -47,7 +49,8 @@ pprStmt env (WasmBrIf e (BranchTyped ty (Labeled l i))) =
     pdoc env e $+$
     text "br_if" <+> int i <+> comment (ppr ty <+> text "to" <+> ppr l)
 
-pprStmt _ (WasmBrTable targets default') =
+pprStmt env (WasmBrTable e targets default') =
+    pdoc env e $+$
     text "br_table" <+> hsep (map target targets) <+> target default'
   where target (Labeled l i) = int i <+> comment (ppr l)
 

@@ -17,6 +17,11 @@ import GHC.Cmm.Dataflow.Block
 import GHC.Cmm.Dataflow.Collections
 import GHC.Cmm.Dataflow.Graph
 import GHC.Cmm.Dataflow.Label
+
+import GHC.Cmm.Switch
+
+import GHC.Platform
+
 import GHC.Utils.Panic
 import GHC.Utils.Outputable (Outputable, text, (<+>), ppr)
 
@@ -33,6 +38,10 @@ type MyBlock = CmmBlock
 
 data ControlFlow e = Unconditional Label
                    | Conditional e Label Label
+                   | Switch { _scrutinee :: e 
+                            , _targets :: [Maybe Label] -- from 0
+                            , _defaultTarget :: Maybe Label
+                            }
                    | TerminalFlow
 
 
@@ -46,22 +55,26 @@ data StackFrame = PendingElse Label Label -- ^ YT
                 | PendingEndif            -- ^ YF
                 | PendingNode MyBlock     -- ^ ordinary node
                 | EndLoop Label           -- ^ Peterson end node
+                | Unreachable             -- ^ Trap for missing case in switch
 
 instance Outputable StackFrame where
     ppr (PendingElse _ tl) = text "else" <+> ppr tl
     ppr (PendingEndif) = text "endif"
     ppr (PendingNode b) = text "node" <+> ppr (entryLabel b)
     ppr (EndLoop l) = text "loop" <+> ppr l
+    ppr (Unreachable) = text "unreachable"
 
 -- | Convert a Cmm CFG to structured control flow expressed as
 -- a `WasmStmt`.
 
 structuredControl :: forall node e s . (node ~ CmmNode)
-                  => (CmmExpr -> e) -- ^ translator for expressions
+                  => Platform  -- ^ needed for offset calculation
+                  -> (CmmExpr -> e) -- ^ translator for expressions
                   -> (Block node O O -> s) -- ^ translator for straight-line code
                   -> GenCmmGraph node -- ^ CFG to be translated
                   -> WasmStmt s e
-structuredControl txExpr txBlock g = doBlock (blockLabeled (g_entry g)) []
+structuredControl platform txExpr txBlock g =
+    doBlock (blockLabeled (g_entry g)) []
  where
 
    -- | `doBlock` basically handles Peterson's case 1: it emits code 
@@ -87,14 +100,20 @@ structuredControl txExpr txBlock g = doBlock (blockLabeled (g_entry g)) []
    doBegins x [] stack =
        WasmLabel (Labeled xlabel undefined) <>
        if isHeader xlabel then
-           wasmLabeled  xlabel WasmLoop (emitBlock x (EndLoop xlabel : stack))
+           wasmLabeled xlabel WasmLoop (emitTrappedBlock x (EndLoop xlabel : stack))
        else
-           emitBlock x stack
+           emitTrappedBlock x stack
 
      -- rolls together case 1 step 6, case 2 step 1, case 2 step 3
-     where emitBlock x stack =
+     where emitTrappedBlock :: MyBlock -> Stack -> WasmStmt s e
+           emitTrappedBlock x stack =
+               if isSwitchWithoutDefault x then
+                   wasmUnlabeled WasmBlock (emitBlock x (Unreachable : stack)) <> WasmUnreachable
+               else
+                   emitBlock x stack
+           emitBlock x stack =
              codeBody x <>
-             case flowLeaving x of
+             case flowLeaving platform x of
                Unconditional l -> doBranch xlabel l stack -- case 1 step 6
                Conditional e t f -> -- case 1 step 5
                  wasmLabeled xlabel WasmIf
@@ -103,6 +122,13 @@ structuredControl txExpr txBlock g = doBlock (blockLabeled (g_entry g)) []
                       (doBranch xlabel f (PendingEndif : stack))
                TerminalFlow -> WasmReturn
                   -- case 1 step 6, case 2 steps 2 and 3
+               Switch e targets default' ->
+                   WasmBrTable (txExpr e) (map switchIndex targets) (switchIndex default')
+            where switchIndex :: Maybe Label -> Labeled Int
+                  switchIndex Nothing = wasmUnlabeled id 0 -- immediate exit
+                  switchIndex (Just lbl) = wasmLabeled lbl id (index lbl stack)
+                          
+
            xlabel = entryLabel x
 
    -- case 2
@@ -212,16 +238,32 @@ structuredControl txExpr txBlock g = doBlock (blockLabeled (g_entry g)) []
     -- XXX need to test a graph with a self-edge
 
 
-flowLeaving :: MyBlock -> ControlFlow CmmExpr
-flowLeaving b =
+flowLeaving :: Platform -> MyBlock -> ControlFlow CmmExpr
+flowLeaving platform b =
     case lastNode b of
       CmmBranch l -> Unconditional l
       CmmCondBranch c t f _ -> Conditional c t f
-      CmmSwitch { } -> panic "switch not implemented"
+      CmmSwitch e targets ->
+          let (offset, target_labels) = switchTargetsToTable targets
+              default_label = switchTargetsDefault targets
+              scrutinee = smartPlus platform e offset
+          in  Switch scrutinee target_labels default_label
+          
       CmmCall { cml_cont = Just l } -> Unconditional l
       CmmCall { cml_cont = Nothing } -> TerminalFlow
       CmmForeignCall { succ = l } -> Unconditional l
-      
+
+smartPlus :: Platform -> CmmExpr -> Int -> CmmExpr
+smartPlus _ e 0 = e
+smartPlus platform e k =
+    CmmMachOp (MO_Add width) [e, CmmLit (CmmInt (fromIntegral k) width)]
+  where width = cmmExprWidth platform e
+
+
+isSwitchWithoutDefault :: MyBlock -> Bool
+isSwitchWithoutDefault b =
+    case lastNode b of CmmSwitch _ targets -> isNothing (switchTargetsDefault targets)
+                       _ -> False
 
 
 
