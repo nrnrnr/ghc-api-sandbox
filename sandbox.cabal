@@ -67,7 +67,8 @@ executable ptest
 
     -- Modules included in this executable, other than Main.
     other-modules:  GHC.Cmm.Dataflow.Dominators, DotCfg, PetersonR, SCode,
-                    GHC.Wasm.ControlFlow, GHC.Wasm.Ppr.Control
+                    GHC.Wasm.ControlFlow, GHC.Wasm.Ppr.Control,
+                    GHC.Wasm.ControlFlow.Run
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:

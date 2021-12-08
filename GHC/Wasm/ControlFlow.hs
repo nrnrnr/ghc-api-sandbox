@@ -3,7 +3,7 @@
 
 module GHC.Wasm.ControlFlow 
   ( WasmStmt(..)
-  , Labeled, pattern Labeled
+  , Labeled, pattern Labeled, stripLabel
   , BranchTyped(..), BranchType(..)
   , pattern WasmExit, pattern WasmContinue
 
@@ -115,3 +115,5 @@ wasmPeepholeOpt _ = panic "peephole optimizer not implemented"
 wasmControlFaults :: WasmStmt s e -> Maybe SDoc
 wasmControlFaults _ = panic "fault checking not implemented"
 
+stripLabel :: Labeled a -> a
+stripLabel (Labeled _ a) = a
