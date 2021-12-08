@@ -4,6 +4,8 @@
 
 module Main where
 
+import Data.Maybe
+
 import DotCfg
 
 import Control.Monad
@@ -113,7 +115,7 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
 
           when True $ do
             putStrLn "/* ============= "
-            let code = structuredControl platform id id graph
+            let code = structuredControl platform id (fromMaybe (text "?") . blockTagOO) graph
             pprout context $ pdoc platform code
             putStrLn "============== */"
             
@@ -200,27 +202,30 @@ dumpSummary context summ =
 data Summary = Waiting | AssignedLabel CmmReg CLabel | Called CLabel
 
 
-blockSummaryOO :: Block CmmNode O O -> Summary
-blockSummaryOO b = foldl extend Waiting (blockToList b)
+blockTagOO :: Block CmmNode O O -> Maybe SDoc
+blockTagOO b =
+    case filter notTick nodes of
+      [CmmAssign _ (CmmMachOp _ [CmmReg (CmmGlobal (VanillaReg {}))])] -> Just $ text "prologue"
+      [CmmAssign _ (CmmReg (CmmGlobal (VanillaReg {})))] -> Just $ text "prologue"
+      [CmmAssign {}] -> Just $ text "single :="
+      _ -> case foldl extend Waiting (blockToList b) of
+               Waiting -> Nothing
+               Called l -> Just $ pdoc genericPlatform l
+               AssignedLabel r l -> Just $ ppr r <+> text ":=" <+> ppr l
   where extend :: Summary -> CmmNode O O -> Summary
         extend Waiting (CmmAssign r (CmmLit (CmmLabel l))) = AssignedLabel r l
         extend (AssignedLabel r l) (CmmUnsafeForeignCall (ForeignTarget e _) _ _)
            | CmmLit (CmmLabel l') <- e = Called l'
            | CmmReg r' <- e,  r == r' = Called l
         extend summary _ = summary                          
+        notTick (CmmTick _) = False
+        notTick _ = True
+
+        nodes = blockToList b
 
 blockTag :: Block CmmNode C C -> SDoc
 blockTag b =
-    case filter notTick $ blockToList (blockBody b) of
-      [CmmAssign _ (CmmMachOp _ [CmmReg (CmmGlobal (VanillaReg {}))])] -> text "prologue"
-      [CmmAssign _ (CmmReg (CmmGlobal (VanillaReg {})))] -> text "prologue"
-      [CmmAssign {}] -> text "single :="
-      _ -> case blockSummaryOO (blockBody b) of
-               Waiting -> hcat [ppr (entryLabel b), text ": ..."]
-               Called l -> pdoc genericPlatform l
-               AssignedLabel r l -> ppr r <+> text ":=" <+> ppr l
-  where notTick (CmmTick _) = False
-        notTick _ = True
+  fromMaybe (hcat [ppr (entryLabel b), text ": ..."]) (blockTagOO $ blockBody b)
 
 blockBody :: Block CmmNode C C -> Block CmmNode O O
 blockBody (BlockCC _first middle _last) = middle
