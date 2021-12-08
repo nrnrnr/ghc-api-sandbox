@@ -2,7 +2,9 @@
 {-# LANGUAGE PatternSynonyms #-}
 
 module GHC.Wasm.ControlFlow 
-  ( WasmStmt(..), Labeled(..), BranchTyped(..), BranchType(..)
+  ( WasmStmt(..)
+  , Labeled, pattern Labeled
+  , BranchTyped(..), BranchType(..)
   , pattern WasmExit, pattern WasmContinue
 
   , wasmLabeled
@@ -20,10 +22,24 @@ import GHC.Utils.Panic
 
 -- | Models the control-flow portion of the WebAssembly instruction set
 
--- The representation includes labels, which are completely redundant.
--- They exist only for sanity checking.
+data Labeled a = Labeled' Label a  -- See [Note labels]
 
-data Labeled a = Labeled Label a
+pattern Labeled :: Label -> a -> Labeled a
+pattern Labeled l a = Labeled' l a
+
+{-# COMPLETE Labeled #-}
+
+-- [Note labels]
+--
+-- The representation includes labels, which are completely redundant.
+-- They exist only for sanity checking.  The `Labeled` type is kept
+-- abstract, so that if we want to eliminate labels from the representation,
+-- clients won't have to change.
+
+
+
+
+
 
 -- [Note block types]
 -- 
