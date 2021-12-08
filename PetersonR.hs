@@ -248,6 +248,7 @@ structuredControl platform txExpr txBlock g =
              addDominee :: Label -> RPNum -> Dominees -> Dominees
              addDominee l rpnum [] = [(l, rpnum)]
              addDominee l rpnum ((l', rpnum') : pairs)
+                 | rpnum == rpnum' = pairs -- no duplicates
                  | rpnum > rpnum' = (l, rpnum) : (l', rpnum') : pairs
                  | otherwise = (l', rpnum') : addDominee l rpnum pairs
 
