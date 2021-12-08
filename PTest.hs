@@ -27,7 +27,9 @@ import GHC.Utils.Outputable
 import GHC.Utils.Ppr (Mode(PageMode))
 
 import GHC.Cmm
+import GHC.Cmm.CLabel
 import GHC.Cmm.ContFlowOpt
+import GHC.Cmm.Dataflow.Block
 import GHC.Cmm.Dataflow.Graph
 import GHC.Cmm.Parser
 import GHC.Cmm.Ppr()
@@ -99,7 +101,7 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
           putStrLn $ show label ++ "(" ++ show sty ++ "):"
           pprout context $ pdoc platform d
         decl platform (CmmProc h entry registers graph) = do
-          printSDocLn context (PageMode True) stdout $ dotCFG (ppr entry) graph
+          printSDocLn context (PageMode True) stdout $ dotCFG blockTag (ppr entry) graph
 
           when True $ do
             putStrLn "/*********"
@@ -193,3 +195,32 @@ dumpSummary :: SDocContext -> ModSummary -> GHC.Ghc ()
 dumpSummary context summ =
   liftIO $ printSDocLn context (PageMode True) stdout $ ppr summ
 
+
+
+data Summary = Waiting | AssignedLabel CmmReg CLabel | Called CLabel
+
+
+blockSummaryOO :: Block CmmNode O O -> Summary
+blockSummaryOO b = foldl extend Waiting (blockToList b)
+  where extend :: Summary -> CmmNode O O -> Summary
+        extend Waiting (CmmAssign r (CmmLit (CmmLabel l))) = AssignedLabel r l
+        extend (AssignedLabel r l) (CmmUnsafeForeignCall (ForeignTarget e _) _ _)
+           | CmmLit (CmmLabel l') <- e = Called l'
+           | CmmReg r' <- e,  r == r' = Called l
+        extend summary _ = summary                          
+
+blockTag :: Block CmmNode C C -> SDoc
+blockTag b =
+    case filter notTick $ blockToList (blockBody b) of
+      [CmmAssign _ (CmmMachOp _ [CmmReg (CmmGlobal (VanillaReg {}))])] -> text "prologue"
+      [CmmAssign _ (CmmReg (CmmGlobal (VanillaReg {})))] -> text "prologue"
+      [CmmAssign {}] -> text "single :="
+      _ -> case blockSummaryOO (blockBody b) of
+               Waiting -> hcat [ppr (entryLabel b), text ": ..."]
+               Called l -> pdoc genericPlatform l
+               AssignedLabel r l -> ppr r <+> text ":=" <+> ppr l
+  where notTick (CmmTick _) = False
+        notTick _ = True
+
+blockBody :: Block CmmNode C C -> Block CmmNode O O
+blockBody (BlockCC _first middle _last) = middle

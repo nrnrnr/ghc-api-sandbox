@@ -8,6 +8,7 @@ module DotCfg (
 where
 
 import Prelude hiding ((<>))
+
 import GHC.Cmm.Dataflow.Dominators
 
 import GHC.Cmm
@@ -21,8 +22,8 @@ import GHC.Utils.Outputable
 
 
 
-dotCFG :: forall node . (NonLocal node) => SDoc -> GenCmmGraph node -> SDoc
-dotCFG title (g@CmmGraph { g_graph = GMany NothingO blockmap NothingO, g_entry = entry }) =
+dotCFG :: forall node . (NonLocal node) => (Block node C C -> SDoc) -> SDoc -> GenCmmGraph node -> SDoc
+dotCFG nodeTag title (g@CmmGraph { g_graph = GMany NothingO blockmap NothingO, g_entry = entry }) =
     -- blockmap is foldable and traversable
     text "digraph {" $$
     nest 2 (edges $$
@@ -36,7 +37,7 @@ dotCFG title (g@CmmGraph { g_graph = GMany NothingO blockmap NothingO, g_entry =
     $$
     text "}"
   where edges = vcat $ map (dotEdge rpnum) $ mapFoldMapWithKey outedges blockmap
-        nodes = vcat $ map (dotNode headers rpnum dmap) $ mapKeys blockmap
+        nodes = vcat $ map (dotNode nodeTag headers rpnum dmap) $ mapToList blockmap
         outedges :: Label -> Block node C C -> [(Label, Label)]
         outedges label block = map (label,) $ successors block
         gwd = graphWithDominators g
@@ -83,13 +84,13 @@ reducibility rpnum dominates blockmap =
         where goodBlock b = unreachable b || all (goodEdge (entryLabel b)) (successors b)
               goodEdge from to = rpnum to > rpnum from || to `dominates` from
               unreachable b = rpnum (entryLabel b) == unreachableRPNum
-dotNode :: LabelSet -> (Label -> RPNum) -> LabelMap DominatorSet -> Label -> SDoc
-dotNode headers rpnum dmap label =
+dotNode :: (a -> SDoc) -> LabelSet -> (Label -> RPNum) -> LabelMap DominatorSet -> (Label, a) -> SDoc
+dotNode display headers rpnum dmap (label, a) =
   dotName label <> space <>
-  text "[label=" <> doubleQuotes dotlabel <> headermark <> text "]"
+  text "[label=" <> doubleQuotes (display a) <> headermark <> text "]"
                 <> text ";"
-  where dotlabel = ppr label <> text "(" <> ppr nodenum <>
-                   text "): " <> dotDominators (getFact domlattice label dmap)
+  where _dotlabel = ppr label <> text "(" <> ppr nodenum <>
+                    text "): " <> dotDominators (getFact domlattice label dmap)
         nodenum = rpnum label
         headermark = if setMember label headers then
                          space <> text "peripheries=2"
