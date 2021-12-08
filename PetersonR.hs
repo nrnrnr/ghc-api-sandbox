@@ -181,10 +181,11 @@ structuredControl txExpr txBlock g = doBlock (blockLabeled (g_entry g)) []
            matches _ _ = False
 
    idominees :: Label -> [MyBlock] -- sorted with highest rpnum first
-   (idominees, rpnum, dominates) = (idominees, rpnum, dominates)
-       where (dominators, rpnums) = dominatorMap' g
-
-             addToDominees ds label rpnum =
+   gwd = graphWithDominators g
+   rpnum lbl = mapFindWithDefault (panic "label without reverse postorder number")
+               lbl (gwd_rpnumbering gwd)
+   (idominees, dominates) = (idominees, dominates)
+       where addToDominees ds label rpnum =
                case idom label of
                  EntryNode -> ds
                  AllNodes -> panic "AllNodes appears as dominator"
@@ -192,10 +193,10 @@ structuredControl txExpr txBlock g = doBlock (blockLabeled (g_entry g)) []
                      addToList (addDominee label rpnum) dominator ds
 
              dominees :: LabelMap Dominees
-             dominees = mapFoldlWithKey addToDominees mapEmpty rpnums
+             dominees = mapFoldlWithKey addToDominees mapEmpty (gwd_rpnumbering gwd)
 
              idom :: Label -> DominatorSet -- immediate dominator
-             idom lbl = mapFindWithDefault AllNodes lbl dominators
+             idom lbl = mapFindWithDefault AllNodes lbl (gwd_dominators gwd)
 
              idominees lbl = map (blockLabeled . fst) $ mapFindWithDefault [] lbl dominees
 
@@ -204,17 +205,8 @@ structuredControl txExpr txBlock g = doBlock (blockLabeled (g_entry g)) []
              addDominee l rpnum ((l', rpnum') : pairs)
                  | rpnum > rpnum' = (l, rpnum) : (l', rpnum') : pairs
                  | otherwise = (l', rpnum') : addDominee l rpnum pairs
-                                          
-             rpnum lbl =
-                 mapFindWithDefault (panic "label without reverse postorder number")
-                                    lbl rpnums
 
-             dominates lbl blockname = lbl == blockname || hasLbl (idom blockname)
-               where hasLbl AllNodes = False
-                     hasLbl EntryNode = False
-                     hasLbl (NumberedNode _ l p) = l == lbl || hasLbl p
-
-
+             dominates lbl blockname = lbl == blockname || dominatorsMember lbl (idom blockname)
 
    isBackward from to = rpnum to <= rpnum from -- self-edge counts as a backward edge
     -- XXX need to test a graph with a self-edge

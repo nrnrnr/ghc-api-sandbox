@@ -3,13 +3,15 @@
 
 module GHC.Cmm.Dataflow.Dominators
   ( DominatorSet(..)
+  , GraphWithDominators(..)
   , RPNum
+  , unreachableRPNum
   , intersectDomSet
-  , dominatorMap
-  , dominatorMap'
+  , graphWithDominators
   , domlattice
 
-  , rpmap
+  , gwdRPNumber
+  , dominatorsMember
   )
 where 
 
@@ -20,6 +22,8 @@ import GHC.Cmm.Dataflow.Graph
 import GHC.Cmm.Dataflow.Label
 import GHC.Cmm 
 
+import GHC.Utils.Outputable(Outputable(..), text, int, hcat)
+
 -- | An efficient data structure for representing dominator sets.
 -- For details, see Cooper, Keith D., Timothy J. Harvey, and Ken Kennedy. 
 -- "A simple, fast dominance algorithm." 2006. 
@@ -28,17 +32,13 @@ import GHC.Cmm
 -- E. Tarjan, Spyridon Triantafyllis, and David I. August (January 2006).  "Finding
 -- Dominators in Practice."  Journal of Graph Algorithms and Applications 10(1):69-94.
 
-data DominatorSet = NumberedNode { ds_revpostnum :: RPNum -- ^ reverse postorder number
+data DominatorSet = NumberedNode { ds_revpostnum :: RPNum
                                  , ds_label  :: Label
                                  , ds_parent :: DominatorSet
                                     -- invariant: parent is never AllNodes
                                  } 
                   | EntryNode
                   | AllNodes -- equivalent of paper's Undefined
-
-type RPNum = Int  -- should this be a newtype?
-
--- in reverse postorder, nodes closer to the entry have smaller numbers
 
 instance Semigroup DominatorSet where
     d <> d' = getJoined (intersectDomSet (OldFact d) (NewFact d'))
@@ -48,6 +48,11 @@ instance Semigroup DominatorSet where
 instance Monoid DominatorSet where
     mempty = AllNodes
 
+
+-- | Reverse postorder number of a node in a CFG
+newtype RPNum = RPNum Int
+  deriving (Eq, Ord)
+-- in reverse postorder, nodes closer to the entry have smaller numbers
 
 
 
@@ -84,40 +89,77 @@ intersectDomSet' nc ofct@(OldFact (NumberedNode old ol op))
 domlattice :: DataflowLattice DominatorSet
 domlattice = DataflowLattice AllNodes intersectDomSet
 
-dominatorMap :: forall node .
-                (NonLocal node)
-             => GenCmmGraph node
-             -> LabelMap DominatorSet
+data GraphWithDominators node =
+    GraphWithDominators { gwd_graph :: GenCmmGraph node
+                        , gwd_dominators :: LabelMap DominatorSet
+                        , gwd_rpnumbering :: LabelMap RPNum
+                        }
+  -- ^ Dominators and RP numberings include only *reachable* blocks.
 
-dominatorMap' :: forall node .
-                (NonLocal node)
-             => GenCmmGraph node
-             -> (LabelMap DominatorSet, LabelMap RPNum)
-                 -- ^ includes reverse postorder numbering
+graphWithDominators :: forall node .
+                       (NonLocal node)
+                       => GenCmmGraph node
+                       -> GraphWithDominators node
+graphWithDominators g = GraphWithDominators g dmap rpmap
+      where dmap = analyzeCmmFwd domlattice transfer g startFacts
 
-dominatorMap = fst . dominatorMap'
-
-dominatorMap' g =
-  (analyzeCmmFwd domlattice transfer g startFacts, rpnums)
-      where startFacts = mkFactBase domlattice [(g_entry g, EntryNode)]
+            startFacts = mkFactBase domlattice [(g_entry g, EntryNode)]
             transfer block facts =
                 asBase [(successor, outgoing) | successor <- successors block]
              where asBase = mkFactBase domlattice
                    incoming = getFact domlattice (entryLabel block) facts
                    outgoing = NumberedNode (nodenum block) (entryLabel block) incoming
-            rpnums :: LabelMap Int
-            -- ^ There's no easy way to put a reverse postorder number on each node,
-            -- so those numbers are recorded here.
-            rpnums = rpmap g
-            nodenum :: Block node C C -> Int
-            -- ^ reverse postorder number of each node
-            nodenum block = mapFindWithDefault (-1) (entryLabel block) rpnums
 
-rpmap :: forall node . (NonLocal node) => GenCmmGraph node -> LabelMap Int
-rpmap g = mapFromList $ zip (map entryLabel rpblocks) [1..]
-  where rpblocks = revPostorderFrom (graphMap g) (g_entry g)
+            rpmap :: LabelMap RPNum
+            rpmap = mapFromList $ zipWith kvpair rpblocks [1..]
+              where kvpair block i = (entryLabel block, RPNum i)
+                    rpblocks = revPostorderFrom (graphMap g) (g_entry g)
+
+            nodenum :: Block node C C -> RPNum
+            -- ^ reverse postorder number of each node
+            nodenum block = mapFindWithDefault unreachableRPNum (entryLabel block) rpmap
 
 graphMap :: GenCmmGraph n -> LabelMap (Block n C C)
 graphMap (CmmGraph { g_graph = GMany NothingO blockmap NothingO }) = blockmap
 
+gwdRPNumber :: GraphWithDominators node -> Label -> RPNum
+gwdRPNumber g l = mapFindWithDefault unreachableRPNum l (gwd_rpnumbering g)
 
+
+
+dominatorsMember :: Label -> DominatorSet -> Bool
+-- ^ Tells if the given label is in the given
+-- dominator set.  Which is to say, does the bloc
+-- with with given label _properly_ and _non-vacuously_
+-- dominate the node whose dominator set this is?
+dominatorsMember lbl (NumberedNode _ l p) = l == lbl || dominatorsMember lbl p
+dominatorsMember _   AllNodes  = False -- ^ see [Note Dominator Membership]
+dominatorsMember _   EntryNode = False
+
+{- [Note Dominator Memership]
+
+Technically AllNodes is the universal set, of which every 
+label should be a member.  But if a block B has dominator set 
+is AllNodes, the dominator relation is vacuous: block B is
+dominated by block A when all paths from the entry to B
+include A.  But _there are no such paths_.  In such a situation
+it is more useful to pretend that B has no dominators.
+
+Also note that technically every block B dominates itself,
+but a `DominatorSet` contains only the *proper* dominators.
+
+-}
+
+
+
+
+
+unreachableRPNum :: RPNum
+unreachableRPNum = RPNum (-1)
+
+instance Show RPNum where
+  show (RPNum i) = "RP" ++ show i
+
+instance Outputable RPNum where
+  ppr (RPNum i) = hcat [text "RP", int i]
+   -- using `(<>)` would conflict with Semigroup
