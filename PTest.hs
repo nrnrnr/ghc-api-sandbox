@@ -100,12 +100,7 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
           pprout context $ pdoc platform d
         decl platform (CmmProc h entry registers graph) = do
           printSDocLn context (PageMode True) stdout $ dotCFG (ppr entry) graph
-          when True $ do
-            putStrLn "/* ============= "
-            let code = structuredControl platform id id graph
-            pprout context $ pdoc platform code
-            putStrLn "============== */"
-            
+
           when True $ do
             putStrLn "/*********"
             pprout context $ pdoc platform h
@@ -113,6 +108,13 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
             putStr "global registers" >> pprout context registers
             pprout context $ pdoc platform graph
             putStrLn "*********/"
+
+          when True $ do
+            putStrLn "/* ============= "
+            let code = structuredControl platform id id graph
+            pprout context $ pdoc platform code
+            putStrLn "============== */"
+            
 
 
 
