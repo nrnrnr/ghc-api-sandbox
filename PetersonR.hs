@@ -6,6 +6,9 @@ module PetersonR
   )
 where
 
+import Debug.Trace
+
+
 import Prelude hiding (succ)
 
 import GHC.Cmm.Dataflow.Dominators
@@ -23,7 +26,10 @@ import GHC.Cmm.Switch
 import GHC.Platform
 
 import GHC.Utils.Panic
-import GHC.Utils.Outputable (Outputable, text, (<+>), ppr)
+import GHC.Utils.Outputable (Outputable, text, (<+>), ppr
+                            , showSDocOneLine, defaultSDocContext
+                            , pprWithCommas
+                            )
 
 import GHC.Wasm.ControlFlow
 
@@ -90,9 +96,11 @@ structuredControl platform txExpr txBlock g =
    doBegins :: MyBlock -> [MyBlock] -> Stack -> WasmStmt s e
    doBranch :: Label -> Label -> Stack -> WasmStmt s e
 
-   doBlock x stack = doBegins x (mergeDominees x) stack
+   doBlock x stack = doBegins x (dominees x) stack
+     where dominees = case lastNode x of CmmSwitch {} -> allDominees
+                                         _ -> mergeDominees
      -- case 1 step 2 (done before step 1)
-     -- note mergeDominees must be ordered with largest RP number first
+     -- note dominees must be ordered with largest RP number first
 
    doBegins x (y:ys) stack =
        blockEndingIn y (doBegins x ys (PendingNode y:stack)) <> doBlock y stack
@@ -123,10 +131,12 @@ structuredControl platform txExpr txBlock g =
                TerminalFlow -> WasmReturn
                   -- case 1 step 6, case 2 steps 2 and 3
                Switch e targets default' ->
+                   trace ("targets: " ++ pprShow targets ++ "\ndefault: " ++ pprShow default') $
+                   trace ("successors: " ++ pprShow (successors x)) $
                    WasmBrTable (txExpr e) (map switchIndex targets) (switchIndex default')
             where switchIndex :: Maybe Label -> Labeled Int
                   switchIndex Nothing = wasmUnlabeled id 0 -- immediate exit
-                  switchIndex (Just lbl) = wasmLabeled lbl id (index lbl stack)
+                  switchIndex (Just lbl) = wasmLabeled lbl id (index' lbl stack)
                           
 
            xlabel = entryLabel x
@@ -150,6 +160,10 @@ structuredControl platform txExpr txBlock g =
    isHeader :: Label -> Bool -- ^ identify loop headers
    mergeDominees :: MyBlock -> [MyBlock]
      -- ^ merge nodes whose immediate dominator is the given block.
+     -- They are produced with the largest RP number first,
+     -- so the largest RP number is pushed on the stack first.
+   allDominees :: MyBlock -> [MyBlock]
+     -- ^ all nodes whose immediate dominator is the given block.
      -- They are produced with the largest RP number first,
      -- so the largest RP number is pushed on the stack first.
    dominates :: Label -> Label -> Bool
@@ -196,7 +210,12 @@ structuredControl platform txExpr txBlock g =
                 setFromList [label | label <- successors block,
                                               dominates label (entryLabel block)]
 
-   mergeDominees x = filter isMergeBlock $ idominees (entryLabel x)
+   mergeDominees = filter isMergeBlock . allDominees
+   allDominees x = idominees (entryLabel x)
+
+   index' lbl stack =
+       if stackHas stack lbl then index lbl stack
+       else panic ("destination label " ++ pprShow lbl ++ " not on stack " ++ pprShow (pprWithCommas ppr stack))
 
    index _ [] = panic "destination label not on stack"
    index label (frame : stack)
@@ -275,4 +294,13 @@ addToList consx = mapAlter add
     where add Nothing = Just (consx [])
           add (Just xs) = Just (consx xs)
 
+
+pprShow :: Outputable a => a -> String
+pprShow a = showSDocOneLine defaultSDocContext (ppr a)
+
+stackHas :: Stack -> Label -> Bool
+stackHas frames lbl = any (matches lbl) frames
+     where matches label (PendingNode b) = label == entryLabel b
+           matches label (EndLoop l) = label == l
+           matches _ _ = False
 
