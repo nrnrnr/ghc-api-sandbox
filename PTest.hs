@@ -5,6 +5,7 @@
 module Main where
 
 import Data.Maybe
+import Data.List hiding (foldl)
 
 import DotCfg
 
@@ -26,13 +27,17 @@ import GHC.Platform
 import GHC.Unit.Home
 import GHC.Utils.Error
 import GHC.Utils.Outputable
+import GHC.Utils.Panic
 import GHC.Utils.Ppr (Mode(PageMode))
 
 import GHC.Cmm
 import GHC.Cmm.CLabel
+import GHC.Cmm.Dataflow.Collections
+import GHC.Cmm.Dataflow.Dominators.Lint
 import GHC.Cmm.ContFlowOpt
 import GHC.Cmm.Dataflow.Block
 import GHC.Cmm.Dataflow.Graph
+import GHC.Cmm.Dataflow.Label
 import GHC.Cmm.Parser
 import GHC.Cmm.Ppr()
 
@@ -119,9 +124,23 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
                 code = structuredControl platform id pprCode graph
             pprout context $ pdoc platform code
             putStrLn "============== */"
+
+          when True $ do
+            putStrLn "/* $$$$$$$$$$$$$ "
+            putStrLn "   PATHS:"
+            let pprLabel = blockTag . blockLabeled graph 
+                pprPath' lbls = hcat $ intersperse (text " -> ") (map pprLabel (reverse lbls))
+            pprout context $ vcat (map pprPath' $ shortPaths' graph)
+            putStrLn "$$$$$$$$$$$$$$ */"
             
 
 
+graphMap :: GenCmmGraph n -> LabelMap (Block n C C)
+graphMap (CmmGraph { g_graph = GMany NothingO blockmap NothingO }) = blockmap
+
+blockLabeled :: NonLocal n => GenCmmGraph n -> Label -> Block n C C
+blockLabeled g lbl =
+    mapFindWithDefault (panic "bad label") lbl (graphMap g)
 
 {-
 dumpCmm :: SDocContext -> ModSummary -> GHC.Ghc ()

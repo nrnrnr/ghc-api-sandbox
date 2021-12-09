@@ -1,6 +1,8 @@
 {-# LANGUAGE GADTs #-}
 
 module GHC.Cmm.Dataflow.Dominators.Lint
+  ( shortPaths'
+  )
 where
 
 --import GHC.Cmm.Dataflow
