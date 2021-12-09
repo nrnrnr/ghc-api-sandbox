@@ -6,21 +6,16 @@ module GHC.Wasm.ControlFlow.OfCmm
   )
 where
 
-import Debug.Trace
-
-
 import Prelude hiding (succ)
-
-import GHC.Cmm.Dataflow.Dominators
 
 import Data.Maybe
 
 import GHC.Cmm
 import GHC.Cmm.Dataflow.Block
 import GHC.Cmm.Dataflow.Collections
+import GHC.Cmm.Dataflow.Dominators
 import GHC.Cmm.Dataflow.Graph
 import GHC.Cmm.Dataflow.Label
-
 import GHC.Cmm.Switch
 
 import GHC.Platform
@@ -32,10 +27,6 @@ import GHC.Utils.Outputable (Outputable, text, (<+>), ppr
                             )
 
 import GHC.Wasm.ControlFlow
-
-type MyBlock = CmmBlock
-
-
 
 -- | Abstracts the kind of control flow we understand how to convert.
 -- A block can be left unconditionally, conditionally on a predicate
@@ -51,6 +42,7 @@ data ControlFlow e = Unconditional Label
                    | TerminalFlow
 
 
+-- | The syntactic constructs in which Wasm code may be contained.
 data ContainingSyntax
     = BlockFollowedBy Label
     | LoopHeadedBy Label
@@ -59,77 +51,72 @@ data ContainingSyntax
 
 type Context = [ContainingSyntax]
 
-instance Outputable ContainingSyntax where
-    ppr (BlockFollowedBy l) = text "node" <+> ppr l
-    ppr (LoopHeadedBy l) = text "loop" <+> ppr l
-    ppr (IfThenElse) = text "if-then-else"
-    ppr (BlockFollowedByTrap) = text "trap"
-
 -- | Convert a Cmm CFG to structured control flow expressed as
 -- a `WasmStmt`.
 
-structuredControl :: forall node e s . (node ~ CmmNode)
-                  => Platform  -- ^ needed for offset calculation
+structuredControl :: forall e s .
+                     Platform  -- ^ needed for offset calculation
                   -> (CmmExpr -> e) -- ^ translator for expressions
-                  -> (Block node O O -> s) -- ^ translator for straight-line code
-                  -> GenCmmGraph node -- ^ CFG to be translated
+                  -> (Block CmmNode O O -> s) -- ^ translator for straight-line code
+                  -> CmmGraph -- ^ CFG to be translated
                   -> WasmStmt s e
 structuredControl platform txExpr txBlock g =
-   if hasBlock isSwitchWithoutDefault g then
+   if hasBlock isSwitchWithoutDefault g then -- see Note [Paranoid flow]
        wasmUnlabeled WasmBlock (doBlock (blockLabeled (g_entry g)) [BlockFollowedByTrap]) <>
        WasmUnreachable
    else
        doBlock (blockLabeled (g_entry g)) []
  where
+   -- Tragic fact: To Cmm, a "block" is a basic block, but to Wasm,
+   -- a "block" is a structured control-flow construct akin
+   -- to Pascal's `begin... end`.
 
    -- | `doBlock` basically handles Peterson's case 1: it emits code 
    -- from the block to the nearest merge node that the block dominates.
-   -- `doBegins` takes the merge nodes that the block dominates, and it
-   -- wraps the immediately preceding code in `begin...end`, so that
-   -- control can transfer to the merge node by means of an exit statement.
+   --
+   -- `doExits` takes the merge nodes that the block dominates, which are
+   -- essentially the exits from a subgraph headed by the block.
+   -- For each merge node, `doExits` wraps the code that immediately
+   -- precedes it in `begin...end`, so that a suitable exit statement
+   -- (Wasm `br` instruction) transfers control to the merge node.
+   --
    -- And `doBranch` implements a control transfer, which may be
-   -- implemented by falling through or by a `br` instruction 
-   -- created with `exit` or `continue`.
+   -- implemented by falling through or by a `br` instruction.
 
-   doBlock  :: MyBlock -> Context -> WasmStmt s e
-   doBegins :: MyBlock -> [MyBlock] -> Context -> WasmStmt s e
-   doBranch :: Label -> Label -> Context -> WasmStmt s e
+   doBlock  :: CmmBlock               -> Context -> WasmStmt s e
+   doExits  :: CmmBlock -> [CmmBlock] -> Context -> WasmStmt s e
+   doBranch :: Label -> Label         -> Context -> WasmStmt s e
 
-   doBlock x context = doBegins x (dominees x) context
-     where dominees = case lastNode x of CmmSwitch {} -> allDominees
-                                         _ -> mergeDominees
-     -- case 1 step 2 (done before step 1)
-     -- note dominees must be ordered with largest RP number first
+   doBlock x context = doExits x (dominatees x) context
+     where dominatees = case lastNode x of CmmSwitch {} -> allDominatees
+                                           _ -> mergeDominatees
+     -- N.B. Dominatees must be ordered with largest RP number first.
+     -- (In Peterson, this is case 1 step 2, which I do before step 1)
 
-   -- QUESTION: would this be nicer with an `inContext` function?
-   -- inContext : (Code -> Code, Label -> ContainingSyntax) -> (Context -> Code) -> (Context -> Code)
-
-   doBegins x (y:ys) context =
-       wasmLabeled ylabel WasmBlock (doBegins x ys (BlockFollowedBy ylabel : context)) <>
+   doExits x (y:ys) context =
+       wasmLabeled ylabel WasmBlock (doExits x ys (BlockFollowedBy ylabel : context)) <>
        doBlock y context
      where ylabel = entryLabel y
-   doBegins x [] context =
+   doExits x [] context =
        WasmLabel (Labeled xlabel undefined) <>
        if isHeader xlabel then
-           wasmLabeled xlabel WasmLoop (emitBlock x (LoopHeadedBy xlabel : context))
+           wasmLabeled xlabel WasmLoop (emitBlockX (LoopHeadedBy xlabel : context))
        else
-           emitBlock x context
+           emitBlockX context
 
-     -- rolls together case 1 step 6, case 2 step 1, case 2 step 3
-     where emitBlock x context =
+     -- (In Peterson, emitBlockX combines case 1 step 6, case 2 step 1, case 2 step 3)
+     where emitBlockX context =
              codeBody x <>
              case flowLeaving platform x of
-               Unconditional l -> doBranch xlabel l context -- case 1 step 6
-               Conditional e t f -> -- case 1 step 5
+               Unconditional l -> doBranch xlabel l context -- Peterson: case 1 step 6
+               Conditional e t f -> -- Peterson: case 1 step 5
                  wasmLabeled xlabel WasmIf
                       (txExpr e)
                       (doBranch xlabel t (IfThenElse : context))
                       (doBranch xlabel f (IfThenElse : context))
                TerminalFlow -> WasmReturn
-                  -- case 1 step 6, case 2 steps 2 and 3
+                  -- Peterson: case 1 step 6, case 2 steps 2 and 3
                Switch e targets default' ->
-                   trace ("targets: " ++ pprShow targets ++ "\ndefault: " ++ pprShow default') $
-                   trace ("successors: " ++ pprShow (successors x)) $
                    WasmBrTable (txExpr e) (map switchIndex targets) (switchIndex default')
             where switchIndex :: Maybe Label -> Labeled Int
                   switchIndex Nothing = wasmUnlabeled id (trapIndex context)
@@ -138,34 +125,35 @@ structuredControl platform txExpr txBlock g =
 
            xlabel = entryLabel x
 
-   -- case 2
+   -- In Peterson, `doBranch` implements case 2 (and part of case 1)
    doBranch from to context 
       | isBackward from to = WasmContinue to i
-           -- case 1 step 4
+           -- Peterson: case 1 step 4
       | isMergeLabel to = WasmExit to i
       | otherwise = doBlock (blockLabeled to) context
      where i = index to context
 
    ---- everything else here is utility functions
 
-   blockLabeled :: Label -> MyBlock
+   blockLabeled :: Label -> CmmBlock
    rpnum :: Label -> RPNum -- ^ reverse postorder number of the labeled block
    forwardPreds :: Label -> [Label] -- ^ reachable predecessors of reachable blocks,
-                                   -- via forward edges only
+                                    -- via forward edges only
    isMergeLabel :: Label -> Bool
-   isMergeBlock :: MyBlock -> Bool
+   isMergeBlock :: CmmBlock -> Bool
    isHeader :: Label -> Bool -- ^ identify loop headers
-   mergeDominees :: MyBlock -> [MyBlock]
+   mergeDominatees :: CmmBlock -> [CmmBlock]
      -- ^ merge nodes whose immediate dominator is the given block.
      -- They are produced with the largest RP number first,
      -- so the largest RP number is pushed on the context first.
-   allDominees :: MyBlock -> [MyBlock]
+   allDominatees :: CmmBlock -> [CmmBlock]
      -- ^ all nodes whose immediate dominator is the given block.
      -- They are produced with the largest RP number first,
      -- so the largest RP number is pushed on the context first.
    dominates :: Label -> Label -> Bool
      -- ^ Domination relation (not just immediate domination)
 
+   -- | Translate straightline code, which is uninterpreted except by `txBlock`.
    codeBody :: Block CmmNode C C -> WasmStmt s e
    codeBody (BlockCC _first middle _last) = WasmSlc (txBlock middle)
 
@@ -174,7 +162,7 @@ structuredControl platform txExpr txBlock g =
    blockLabeled l = fromJust $ mapLookup l blockmap
    GMany NothingO blockmap NothingO = g_graph g
 
-   rpblocks :: [MyBlock]
+   rpblocks :: [CmmBlock]
    rpblocks = revPostorderFrom blockmap (g_entry g)
 
    foldEdges :: forall a . (Label -> Label -> a -> a) -> a -> a
@@ -190,29 +178,34 @@ structuredControl platform txExpr txBlock g =
                  | isBackward from to = pm
                  | otherwise = addToList (from :) to pm
 
-   isMergeLabel l = setMember l mergeNodes
+   isMergeLabel l = setMember l mergeBlockLabels
    isMergeBlock = isMergeLabel . entryLabel                   
 
-   mergeNodes :: LabelSet
-   mergeNodes =
+   mergeBlockLabels :: LabelSet
+   -- N.B. A block is a merge node if it is where control flow merges.
+   -- That means it is entered by multiple control-flow edges, _except_
+   -- back edges don't count.  There must be multiple paths that enter the
+   -- block _without_ passing through the block itself.
+   mergeBlockLabels =
        setFromList [entryLabel n | n <- rpblocks, big (forwardPreds (entryLabel n))]
     where big [] = False
           big [_] = False
           big (_ : _ : _) = True
 
-   isHeader = \l -> setMember l headers
+   isHeader = \l -> setMember l headers  -- loop headers
       where headers :: LabelSet
             headers = foldMap headersPointedTo blockmap
             headersPointedTo block =
                 setFromList [label | label <- successors block,
                                               dominates label (entryLabel block)]
 
-   mergeDominees = filter isMergeBlock . allDominees
-   allDominees x = idominees (entryLabel x)
+   mergeDominatees = filter isMergeBlock . allDominatees
+   allDominatees x = idominatees (entryLabel x)
 
    index' lbl context =
        if stackHas context lbl then index lbl context
-       else panic ("destination label " ++ pprShow lbl ++ " not on context " ++ pprShow (pprWithCommas ppr context))
+       else panic ("destination label " ++ pprShow lbl ++
+                   " not in context " ++ pprShow (pprWithCommas ppr context))
 
    index _ [] = panic "destination label not in context"
    index label (frame : context)
@@ -228,40 +221,45 @@ structuredControl platform txExpr txBlock g =
    trapIndex (_ : context) = 1 + trapIndex context
   
 
-   idominees :: Label -> [MyBlock] -- sorted with highest rpnum first
+   idominatees :: Label -> [CmmBlock] 
+     -- Immediate dominatees, sorted with highest rpnum first
    gwd = graphWithDominators g
    rpnum lbl = mapFindWithDefault (panic "label without reverse postorder number")
                lbl (gwd_rpnumbering gwd)
-   (idominees, dominates) = (idominees, dominates)
-       where addToDominees ds label rpnum =
+   (idominatees, dominates) = (idominatees, dominates)
+       where addToDominatees ds label rpnum =
                case idom label of
                  EntryNode -> ds
                  AllNodes -> panic "AllNodes appears as dominator"
                  NumberedNode { ds_label = dominator } ->
-                     addToList (addDominee label rpnum) dominator ds
+                     addToList (addDominatee label rpnum) dominator ds
 
-             dominees :: LabelMap Dominees
-             dominees = mapFoldlWithKey addToDominees mapEmpty (gwd_rpnumbering gwd)
+             dominatees :: LabelMap Dominatees
+             dominatees = mapFoldlWithKey addToDominatees mapEmpty (gwd_rpnumbering gwd)
 
              idom :: Label -> DominatorSet -- immediate dominator
              idom lbl = mapFindWithDefault AllNodes lbl (gwd_dominators gwd)
 
-             idominees lbl = map (blockLabeled . fst) $ mapFindWithDefault [] lbl dominees
+             idominatees lbl =
+                 map (blockLabeled . fst) $ mapFindWithDefault [] lbl dominatees
 
-             addDominee :: Label -> RPNum -> Dominees -> Dominees
-             addDominee l rpnum [] = [(l, rpnum)]
-             addDominee l rpnum ((l', rpnum') : pairs)
+             addDominatee :: Label -> RPNum -> Dominatees -> Dominatees
+             addDominatee l rpnum [] = [(l, rpnum)]
+             addDominatee l rpnum ((l', rpnum') : pairs)
                  | rpnum == rpnum' = pairs -- no duplicates
                  | rpnum > rpnum' = (l, rpnum) : (l', rpnum') : pairs
-                 | otherwise = (l', rpnum') : addDominee l rpnum pairs
+                 | otherwise = (l', rpnum') : addDominatee l rpnum pairs
 
-             dominates lbl blockname = lbl == blockname || dominatorsMember lbl (idom blockname)
+             dominates lbl blockname =
+                 lbl == blockname || dominatorsMember lbl (idom blockname)
 
    isBackward from to = rpnum to <= rpnum from -- self-edge counts as a backward edge
-    -- XXX need to test a graph with a self-edge
 
+type Dominatees = [(Label, RPNum)] 
+  -- ^ List of blocks that are immediately dominated by a block.
+  -- (In a just world this definition could go into a `where` clause.)
 
-flowLeaving :: Platform -> MyBlock -> ControlFlow CmmExpr
+flowLeaving :: Platform -> CmmBlock -> ControlFlow CmmExpr
 flowLeaving platform b =
     case lastNode b of
       CmmBranch l -> Unconditional l
@@ -283,14 +281,30 @@ smartPlus platform e k =
   where width = cmmExprWidth platform e
 
 
-isSwitchWithoutDefault :: MyBlock -> Bool
+isSwitchWithoutDefault :: CmmBlock -> Bool
 isSwitchWithoutDefault b =
     case lastNode b of CmmSwitch _ targets -> isNothing (switchTargetsDefault targets)
                        _ -> False
 
 
+--  Note [Paranoid Flow]
+--  
+--  If it knows all alternatives to a `case` expression, GHC generates a
+--  `CmmSwitch` node without a default label.  But the Wasm target
+--  requires a default label for *every* switch.  So if the graph
+--  being compiled contains a `CmmSwitch` with no default label,
+--  we generate an extra block that is followed by an `unreachable`
+--  instruction, and every Wasm `br_table` instruction is given
+--  that label as its default target.  That's paranoid.
+--  
+--  If we truly trust GHC that the default will never run,
+--  we could avoid ever emitting that extra block.  The `trapIndex`
+--  function would need to be altered to return zero always
+--  (since a branch of zero is always safe).
 
-type Dominees = [(Label, RPNum)] -- ugh. should be in `where` clause
+
+
+
 
 
 addToList :: (IsMap map) => ([a] -> [a]) -> KeyOf map -> map [a] -> map [a]
@@ -298,9 +312,24 @@ addToList consx = mapAlter add
     where add Nothing = Just (consx [])
           add (Just xs) = Just (consx xs)
 
+hasBlock :: (Block node C C -> Bool) -> GenCmmGraph node -> Bool
+hasBlock p g = mapFoldl (\b block -> b || p block) False blockmap
+   where GMany NothingO blockmap NothingO = g_graph g
+
+
+------------------------------------------------------------------
+--- everything below here is for diagnostics in case of panic
+
 
 pprShow :: Outputable a => a -> String
 pprShow a = showSDocOneLine defaultSDocContext (ppr a)
+
+
+instance Outputable ContainingSyntax where
+    ppr (BlockFollowedBy l) = text "node" <+> ppr l
+    ppr (LoopHeadedBy l) = text "loop" <+> ppr l
+    ppr (IfThenElse) = text "if-then-else"
+    ppr (BlockFollowedByTrap) = text "trap"
 
 stackHas :: Context -> Label -> Bool
 stackHas frames lbl = any (matches lbl) frames
@@ -308,6 +337,3 @@ stackHas frames lbl = any (matches lbl) frames
            matches label (LoopHeadedBy l) = label == l
            matches _ _ = False
 
-hasBlock :: (Block node C C -> Bool) -> GenCmmGraph node -> Bool
-hasBlock p g = mapFoldl (\b block -> b || p block) False blockmap
-   where GMany NothingO blockmap NothingO = g_graph g
