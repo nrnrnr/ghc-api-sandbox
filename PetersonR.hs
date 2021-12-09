@@ -106,7 +106,7 @@ structuredControl platform txExpr txBlock g =
    -- inContext : (Code -> Code, Label -> ContainingSyntax) -> (Context -> Code) -> (Context -> Code)
 
    doBegins x (y:ys) context =
-       wasmLabeled ylabel WasmBlock (doBegins x ys (BlockFollowedBy ylabel:context)) <>
+       wasmLabeled ylabel WasmBlock (doBegins x ys (BlockFollowedBy ylabel : context)) <>
        doBlock y context
      where ylabel = entryLabel y
    doBegins x [] context =
