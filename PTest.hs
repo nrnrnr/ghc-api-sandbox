@@ -127,6 +127,9 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
 
           when True $ do
             putStrLn "/* $$$$$$$$$$$$$ "
+            putStrLn $ "  Dominators " ++
+                         (if dominatorsPassAllChecks graph then "pass" else "FAIL") ++
+                         " lint checks"
             putStrLn "   PATHS:"
             let pprLabel = blockTag . blockLabeled graph 
                 pprPath' lbls = hcat $ intersperse (text " -> ") (map pprLabel (reverse lbls))
