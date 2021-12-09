@@ -51,24 +51,19 @@ data ControlFlow e = Unconditional Label
                    | TerminalFlow
 
 
--- | Peterson's stack.  If I can figure out how to make 
--- the code generator recursive, we can replace the stack
--- with a data structure whose only purpose is to track
--- the nexting level for exit statements.
+data ContainingSyntax
+    = BlockFollowedBy Label
+    | LoopHeadedBy Label
+    | IfThenElse
+    | BlockFollowedByTrap
 
-type Stack = [StackFrame]
-data StackFrame = PendingElse Label Label -- ^ YT
-                | PendingEndif            -- ^ YF
-                | PendingNode MyBlock     -- ^ ordinary node
-                | EndLoop Label           -- ^ Peterson end node
-                | Unreachable             -- ^ Trap for missing case in switch
+type Context = [ContainingSyntax]
 
-instance Outputable StackFrame where
-    ppr (PendingElse _ tl) = text "else" <+> ppr tl
-    ppr (PendingEndif) = text "endif"
-    ppr (PendingNode b) = text "node" <+> ppr (entryLabel b)
-    ppr (EndLoop l) = text "loop" <+> ppr l
-    ppr (Unreachable) = text "unreachable"
+instance Outputable ContainingSyntax where
+    ppr (BlockFollowedBy l) = text "node" <+> ppr l
+    ppr (LoopHeadedBy l) = text "loop" <+> ppr l
+    ppr (IfThenElse) = text "if-then-else"
+    ppr (BlockFollowedByTrap) = text "trap"
 
 -- | Convert a Cmm CFG to structured control flow expressed as
 -- a `WasmStmt`.
@@ -92,42 +87,47 @@ structuredControl platform txExpr txBlock g =
    -- implemented by falling through or by a `br` instruction 
    -- created with `exit` or `continue`.
 
-   doBlock  :: MyBlock -> Stack -> WasmStmt s e
-   doBegins :: MyBlock -> [MyBlock] -> Stack -> WasmStmt s e
-   doBranch :: Label -> Label -> Stack -> WasmStmt s e
+   doBlock  :: MyBlock -> Context -> WasmStmt s e
+   doBegins :: MyBlock -> [MyBlock] -> Context -> WasmStmt s e
+   doBranch :: Label -> Label -> Context -> WasmStmt s e
 
-   doBlock x stack = doBegins x (dominees x) stack
+   doBlock x context = doBegins x (dominees x) context
      where dominees = case lastNode x of CmmSwitch {} -> allDominees
                                          _ -> mergeDominees
      -- case 1 step 2 (done before step 1)
      -- note dominees must be ordered with largest RP number first
 
-   doBegins x (y:ys) stack =
-       blockEndingIn y (doBegins x ys (PendingNode y:stack)) <> doBlock y stack
-     where blockEndingIn y = wasmLabeled (entryLabel y) WasmBlock
-   doBegins x [] stack =
+   -- QUESTION: would this be nicer with an `inContext` function?
+   -- inContext : (Code -> Code, Label -> ContainingSyntax) -> (Context -> Code) -> (Context -> Code)
+
+   doBegins x (y:ys) context =
+       wasmLabeled ylabel WasmBlock (doBegins x ys (BlockFollowedBy ylabel:context)) <>
+       doBlock y context
+     where ylabel = entryLabel y
+   doBegins x [] context =
        WasmLabel (Labeled xlabel undefined) <>
        if isHeader xlabel then
-           wasmLabeled xlabel WasmLoop (emitTrappedBlock x (EndLoop xlabel : stack))
+           wasmLabeled xlabel WasmLoop (emitTrappedBlock x (LoopHeadedBy xlabel : context))
        else
-           emitTrappedBlock x stack
+           emitTrappedBlock x context
 
      -- rolls together case 1 step 6, case 2 step 1, case 2 step 3
-     where emitTrappedBlock :: MyBlock -> Stack -> WasmStmt s e
-           emitTrappedBlock x stack =
+     where emitTrappedBlock :: MyBlock -> Context -> WasmStmt s e
+           emitTrappedBlock x context =
                if isSwitchWithoutDefault x then
-                   wasmUnlabeled WasmBlock (emitBlock x (Unreachable : stack)) <> WasmUnreachable
+                   wasmUnlabeled WasmBlock (emitBlock x (BlockFollowedByTrap : context)) <>
+                   WasmUnreachable
                else
-                   emitBlock x stack
-           emitBlock x stack =
+                   emitBlock x context
+           emitBlock x context =
              codeBody x <>
              case flowLeaving platform x of
-               Unconditional l -> doBranch xlabel l stack -- case 1 step 6
+               Unconditional l -> doBranch xlabel l context -- case 1 step 6
                Conditional e t f -> -- case 1 step 5
                  wasmLabeled xlabel WasmIf
                       (txExpr e)
-                      (doBranch xlabel t (PendingElse xlabel f : stack))
-                      (doBranch xlabel f (PendingEndif : stack))
+                      (doBranch xlabel t (IfThenElse : context))
+                      (doBranch xlabel f (IfThenElse : context))
                TerminalFlow -> WasmReturn
                   -- case 1 step 6, case 2 steps 2 and 3
                Switch e targets default' ->
@@ -136,18 +136,18 @@ structuredControl platform txExpr txBlock g =
                    WasmBrTable (txExpr e) (map switchIndex targets) (switchIndex default')
             where switchIndex :: Maybe Label -> Labeled Int
                   switchIndex Nothing = wasmUnlabeled id 0 -- immediate exit
-                  switchIndex (Just lbl) = wasmLabeled lbl id (index' lbl stack)
+                  switchIndex (Just lbl) = wasmLabeled lbl id (index' lbl context)
                           
 
            xlabel = entryLabel x
 
    -- case 2
-   doBranch from to stack 
+   doBranch from to context 
       | isBackward from to = WasmContinue to i
            -- case 1 step 4
       | isMergeLabel to = WasmExit to i
-      | otherwise = doBlock (blockLabeled to) stack
-     where i = index to stack
+      | otherwise = doBlock (blockLabeled to) context
+     where i = index to context
 
    ---- everything else here is utility functions
 
@@ -161,11 +161,11 @@ structuredControl platform txExpr txBlock g =
    mergeDominees :: MyBlock -> [MyBlock]
      -- ^ merge nodes whose immediate dominator is the given block.
      -- They are produced with the largest RP number first,
-     -- so the largest RP number is pushed on the stack first.
+     -- so the largest RP number is pushed on the context first.
    allDominees :: MyBlock -> [MyBlock]
      -- ^ all nodes whose immediate dominator is the given block.
      -- They are produced with the largest RP number first,
-     -- so the largest RP number is pushed on the stack first.
+     -- so the largest RP number is pushed on the context first.
    dominates :: Label -> Label -> Bool
      -- ^ Domination relation (not just immediate domination)
 
@@ -213,17 +213,24 @@ structuredControl platform txExpr txBlock g =
    mergeDominees = filter isMergeBlock . allDominees
    allDominees x = idominees (entryLabel x)
 
-   index' lbl stack =
-       if stackHas stack lbl then index lbl stack
-       else panic ("destination label " ++ pprShow lbl ++ " not on stack " ++ pprShow (pprWithCommas ppr stack))
+   index' lbl context =
+       if stackHas context lbl then index lbl context
+       else panic ("destination label " ++ pprShow lbl ++ " not on context " ++ pprShow (pprWithCommas ppr context))
 
-   index _ [] = panic "destination label not on stack"
-   index label (frame : stack)
+   index _ [] = panic "destination label not in context"
+   index label (frame : context)
        | matches label frame = 0
-       | otherwise = 1 + index label stack
-     where matches label (PendingNode b) = label == entryLabel b
-           matches label (EndLoop l) = label == l
+       | otherwise = 1 + index label context
+     where matches label (BlockFollowedBy l) = label == l
+           matches label (LoopHeadedBy l) = label == l
            matches _ _ = False
+
+   trapIndex :: Context -> Int
+   trapIndex [] = panic "context does not include a trap"
+   trapIndex (BlockFollowedByTrap : _) = 0
+   trapIndex (_ : context) = 1 + trapIndex context
+  
+   _blah = trapIndex
 
    idominees :: Label -> [MyBlock] -- sorted with highest rpnum first
    gwd = graphWithDominators g
@@ -299,9 +306,9 @@ addToList consx = mapAlter add
 pprShow :: Outputable a => a -> String
 pprShow a = showSDocOneLine defaultSDocContext (ppr a)
 
-stackHas :: Stack -> Label -> Bool
+stackHas :: Context -> Label -> Bool
 stackHas frames lbl = any (matches lbl) frames
-     where matches label (PendingNode b) = label == entryLabel b
-           matches label (EndLoop l) = label == l
+     where matches label (BlockFollowedBy l) = label == l
+           matches label (LoopHeadedBy l) = label == l
            matches _ _ = False
 
