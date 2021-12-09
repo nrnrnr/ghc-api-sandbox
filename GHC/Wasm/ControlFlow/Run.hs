@@ -42,14 +42,14 @@ run (Run s : stack) = step s
         step (WasmUnreachable) = trap
         step (WasmBlock s) = run (Run (unL s) : EndBlock : stack)
         step (WasmLoop s) = run (Run (unL s) : EndLoop (unL s) : stack)
-        step (WasmBr (BranchTyped _ (Labeled _ k))) = exit k stack
+        step (WasmBr (BranchTyped _ k')) = exit (unL k') stack
         step (WasmIf e t f) = do
           b <- evalPredicate (unL e)
           run (Run (if b then t else f) : EndIf : stack)
 
-        step (WasmBrIf e (BranchTyped _ (Labeled _ k))) = do
+        step (WasmBrIf e (BranchTyped _ k')) = do
           b <- evalPredicate e
-          if b then exit k stack else run stack
+          if b then exit (unL k') stack else run stack
 
         step (WasmBrTable e targets default') = do
           n <- evalEnum (length targets) e
@@ -71,4 +71,4 @@ run (Run s : stack) = step s
         exit k (_ : stack) = exit (pred k) stack
         exit k [] = exitCrash k
 
-        unL = stripLabel
+        unL = withoutLabel

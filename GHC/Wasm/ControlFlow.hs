@@ -3,7 +3,7 @@
 
 module GHC.Wasm.ControlFlow 
   ( WasmStmt(..)
-  , Labeled, pattern Labeled, stripLabel
+  , Labeled, pattern Labeled, withoutLabel, labelOf
   , BranchTyped(..), BranchType(..)
   , pattern WasmExit, pattern WasmContinue
 
@@ -17,18 +17,23 @@ where
 
 import Data.Void
 
-import GHC.Cmm.Dataflow.Label (Label, mkHooplLabel)
+import GHC.Cmm.Dataflow.Label (Label)
 import GHC.Utils.Outputable
 import GHC.Utils.Panic
 
 -- | Models the control-flow portion of the WebAssembly instruction set
 
-data Labeled a = Labeled' Label a  -- See [Note labels]
+data Labeled a = Labeled Label a  -- See [Note labels]
+               | Unlabeled a
 
-pattern Labeled :: Label -> a -> Labeled a
-pattern Labeled l a = Labeled' l a
+withoutLabel :: Labeled a -> a
+withoutLabel (Labeled _ a) = a
+withoutLabel (Unlabeled a) = a
 
-{-# COMPLETE Labeled #-}
+labelOf :: Labeled a -> Maybe Label
+labelOf (Labeled l _) = Just l
+labelOf (Unlabeled _) = Nothing
+
 
 -- [Note labels]
 --
@@ -96,11 +101,7 @@ wasmLabeled :: Label -> (Labeled a -> b) -> a -> b
 wasmLabeled l c a = c (Labeled l a)
 
 wasmUnlabeled :: (Labeled a -> b) -> a -> b
-wasmUnlabeled = wasmLabeled bogusLabel -- XXX ugh
-
-bogusLabel :: Label
-bogusLabel = mkHooplLabel (-1)
-
+wasmUnlabeled c a = c (Unlabeled a)
 
 instance Semigroup (WasmStmt s e) where
   (<>) = WasmSeq
@@ -115,5 +116,3 @@ wasmPeepholeOpt _ = panic "peephole optimizer not implemented"
 wasmControlFaults :: WasmStmt s e -> Maybe SDoc
 wasmControlFaults _ = panic "fault checking not implemented"
 
-stripLabel :: Labeled a -> a
-stripLabel (Labeled _ a) = a

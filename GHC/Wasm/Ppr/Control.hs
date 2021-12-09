@@ -1,5 +1,6 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE ViewPatterns #-}
 
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
@@ -10,8 +11,18 @@ where
 
 import Prelude hiding ((<>))
 
+import GHC.Utils.Panic
 import GHC.Utils.Outputable
 import GHC.Wasm.ControlFlow
+
+
+data LabeledView a = LV SDoc a
+
+lview :: Labeled a -> LabeledView a
+lview la = LV (render (labelOf la)) (withoutLabel la)
+  where render Nothing = text "-"
+        render (Just l) = ppr l
+
 
 
 
@@ -24,17 +35,17 @@ pprStmt _ WasmNop = text "nop"
 
 pprStmt _ WasmUnreachable = text "unreachable"
 
-pprStmt env (WasmBlock (Labeled l body)) =
-    text "block" <+> text ";; label =" <+> ppr l $+$
+pprStmt env (WasmBlock (lview -> LV l body)) =
+    text "block" <+> text ";; label =" <+> l $+$
     nest smallindent (pprStmt env body) $+$
     text "end" <+> text ";; block label = " <+> ppr l
 
-pprStmt env (WasmLoop (Labeled l body)) =
-    text "loop" <+> text ";; label =" <+> ppr l $+$
+pprStmt env (WasmLoop (lview -> LV l body)) =
+    text "loop" <+> text ";; label =" <+> l $+$
     nest smallindent (pprStmt env body) $+$
-    text "end" <+> text ";; loop label = " <+> ppr l
+    text "end" <+> text ";; loop label = " <+> l
 
-pprStmt env (WasmIf (Labeled _ e) t f) =
+pprStmt env (WasmIf (lview -> LV _ e) t f) =
     pdoc env e $+$
     text "if" $+$
     nest smallindent (pprStmt env t) $+$
@@ -42,24 +53,27 @@ pprStmt env (WasmIf (Labeled _ e) t f) =
     nest smallindent (pprStmt env f) $+$
     text "end ;; if"
 
-pprStmt _ (WasmBr (BranchTyped ty (Labeled l i))) =
-    text "br" <+> int i <+> comment (ppr ty <+> text "to" <+> ppr l)
+pprStmt _ (WasmBr (BranchTyped ty (lview -> LV l i))) =
+    text "br" <+> int i <+> comment (ppr ty <+> text "to" <+> l)
 
-pprStmt env (WasmBrIf e (BranchTyped ty (Labeled l i))) =
+pprStmt env (WasmBrIf e (BranchTyped ty (lview -> LV l i))) =
     pdoc env e $+$
-    text "br_if" <+> int i <+> comment (ppr ty <+> text "to" <+> ppr l)
+    text "br_if" <+> int i <+> comment (ppr ty <+> text "to" <+> l)
 
 pprStmt env (WasmBrTable e targets default') =
     pdoc env e $+$
     text "br_table" <+> hsep (map target targets) <+> target default'
-  where target (Labeled l i) = int i <+> comment (ppr l)
+  where target (lview -> LV l i) = int i <+> comment l
 
 pprStmt _ WasmReturn = text "return"
 
 pprStmt env (WasmSlc s) = pdoc env s
 pprStmt env (WasmSeq a b) = pprStmt env a $+$ pprStmt env b
 
-pprStmt _ (WasmLabel (Labeled l _)) = comment (ppr l <> text ":")
+pprStmt _ (WasmLabel lv)
+        | Just l <- labelOf lv = comment (ppr l <> text ":")
+        | otherwise = panic "label statement has no label"
+
 
 
 instance Outputable BranchType where
