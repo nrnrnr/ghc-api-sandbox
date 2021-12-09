@@ -11,8 +11,8 @@ import DotCfg
 import Control.Monad
 import Control.Monad.IO.Class
 
-import PetersonR
--- import SCode
+import GHC.Wasm.ControlFlow.OfCmm
+
 
 import System.FilePath as FilePath
 

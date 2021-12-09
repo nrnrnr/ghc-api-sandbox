@@ -1,7 +1,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 
-module PetersonR
+module GHC.Wasm.ControlFlow.OfCmm
   ( structuredControl
   )
 where
