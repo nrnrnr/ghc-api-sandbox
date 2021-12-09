@@ -76,8 +76,7 @@ structuredControl :: forall node e s . (node ~ CmmNode)
                   -> WasmStmt s e
 structuredControl platform txExpr txBlock g =
    if hasBlock isSwitchWithoutDefault g then
-       wasmUnlabeled WasmBlock (doBlock (blockLabeled (g_entry g)) [BlockFollowedByTrap] <>
-                                WasmReturn) <>
+       wasmUnlabeled WasmBlock (doBlock (blockLabeled (g_entry g)) [BlockFollowedByTrap]) <>
        WasmUnreachable
    else
        doBlock (blockLabeled (g_entry g)) []
