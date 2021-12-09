@@ -115,7 +115,8 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
 
           when True $ do
             putStrLn "/* ============= "
-            let code = structuredControl platform id (fromMaybe (text "?") . blockTagOO) graph
+            let pprCode block = text "CODE:" <+> (fromMaybe (text "?") $ blockTagOO block)
+                code = structuredControl platform id pprCode graph
             pprout context $ pdoc platform code
             putStrLn "============== */"
             
