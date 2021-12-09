@@ -75,7 +75,12 @@ structuredControl :: forall node e s . (node ~ CmmNode)
                   -> GenCmmGraph node -- ^ CFG to be translated
                   -> WasmStmt s e
 structuredControl platform txExpr txBlock g =
-    doBlock (blockLabeled (g_entry g)) []
+   if hasBlock isSwitchWithoutDefault g then
+       wasmUnlabeled WasmBlock (doBlock (blockLabeled (g_entry g)) [BlockFollowedByTrap] <>
+                                WasmReturn) <>
+       WasmUnreachable
+   else
+       doBlock (blockLabeled (g_entry g)) []
  where
 
    -- | `doBlock` basically handles Peterson's case 1: it emits code 
@@ -107,19 +112,12 @@ structuredControl platform txExpr txBlock g =
    doBegins x [] context =
        WasmLabel (Labeled xlabel undefined) <>
        if isHeader xlabel then
-           wasmLabeled xlabel WasmLoop (emitTrappedBlock x (LoopHeadedBy xlabel : context))
+           wasmLabeled xlabel WasmLoop (emitBlock x (LoopHeadedBy xlabel : context))
        else
-           emitTrappedBlock x context
+           emitBlock x context
 
      -- rolls together case 1 step 6, case 2 step 1, case 2 step 3
-     where emitTrappedBlock :: MyBlock -> Context -> WasmStmt s e
-           emitTrappedBlock x context =
-               if isSwitchWithoutDefault x then
-                   wasmUnlabeled WasmBlock (emitBlock x (BlockFollowedByTrap : context)) <>
-                   WasmUnreachable
-               else
-                   emitBlock x context
-           emitBlock x context =
+     where emitBlock x context =
              codeBody x <>
              case flowLeaving platform x of
                Unconditional l -> doBranch xlabel l context -- case 1 step 6
@@ -135,7 +133,7 @@ structuredControl platform txExpr txBlock g =
                    trace ("successors: " ++ pprShow (successors x)) $
                    WasmBrTable (txExpr e) (map switchIndex targets) (switchIndex default')
             where switchIndex :: Maybe Label -> Labeled Int
-                  switchIndex Nothing = wasmUnlabeled id 0 -- immediate exit
+                  switchIndex Nothing = wasmUnlabeled id (trapIndex context)
                   switchIndex (Just lbl) = wasmLabeled lbl id (index' lbl context)
                           
 
@@ -230,7 +228,6 @@ structuredControl platform txExpr txBlock g =
    trapIndex (BlockFollowedByTrap : _) = 0
    trapIndex (_ : context) = 1 + trapIndex context
   
-   _blah = trapIndex
 
    idominees :: Label -> [MyBlock] -- sorted with highest rpnum first
    gwd = graphWithDominators g
@@ -312,3 +309,6 @@ stackHas frames lbl = any (matches lbl) frames
            matches label (LoopHeadedBy l) = label == l
            matches _ _ = False
 
+hasBlock :: (Block node C C -> Bool) -> GenCmmGraph node -> Bool
+hasBlock p g = mapFoldl (\b block -> b || p block) False blockmap
+   where GMany NothingO blockmap NothingO = g_graph g
