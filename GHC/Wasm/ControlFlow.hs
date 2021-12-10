@@ -80,11 +80,11 @@ data WasmStmt s e where
   WasmIf    :: Labeled e -> WasmStmt s e -> WasmStmt s e -> WasmStmt s e
 
   WasmBr   :: BranchTyped (Labeled Int) -> WasmStmt s e
-  WasmBrIf :: e -> BranchTyped (Labeled Int) -> WasmStmt s e
-  WasmBrTable :: e -> [Labeled Int] -> Labeled Int -> WasmStmt s e
+  WasmBrIf :: Labeled e -> BranchTyped (Labeled Int) -> WasmStmt s e
+  WasmBrTable :: Labeled e -> [Labeled Int] -> Labeled Int -> WasmStmt s e
   WasmReturn :: WasmStmt s e
 
-  WasmSlc :: s -> WasmStmt s e   -- straight-line code
+  WasmSlc :: Labeled s -> WasmStmt s e   -- straight-line code
   WasmSeq :: WasmStmt s e -> WasmStmt s e -> WasmStmt s e
 
   WasmLabel :: Labeled Void -> WasmStmt s e -- pure sanity-checking play

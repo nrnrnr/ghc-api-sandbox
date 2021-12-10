@@ -6,28 +6,31 @@ module GHC.Wasm.ControlFlow.Run
   )
 where
 
+import Data.Maybe
+
 import GHC.Wasm.ControlFlow
+
+import GHC.Test.ControlMonad
 
 -- data Atomic s e = Stmt s | Predicate e | Enum e
 
-class Monad m => WasmMonad m where
-  type WMExpr m
-  type WMStmt m
-
-  evalPredicate :: WMExpr m -> m Bool
-  evalEnum      :: Int -> WMExpr m -> m Int
-  takeAction    :: WMStmt m -> m ()
-
-  trap :: m ()
-  exitCrash :: Int -> m ()
+--class Monad m => WasmMonad m where
+--  type WMExpr m
+--  type WMStmt m
+--
+--  evalPredicate :: WMExpr m -> m Bool
+--  evalEnum      :: Int -> WMExpr m -> m Int
+--  takeAction    :: WMStmt m -> m ()
+--
+--  trap :: m ()
+--  exitCrash :: Int -> m ()
 
 data Frame s = EndLoop s | EndBlock | EndIf | Run s
 
-eval :: WasmMonad m => WasmStmt (WMStmt m) (WMExpr m) -> m ()
-run  :: forall m . WasmMonad m => Stack m -> m ()
+eval :: ControlTestMonad m => WasmStmt s e -> m ()
+run  :: forall s e m . ControlTestMonad m => Stack s e -> m ()
 
-type Stack m = [Frame (Code m)]
-type Code m = WasmStmt (WMStmt m) (WMExpr m)
+type Stack s e = [Frame (WasmStmt s e)]
 
 eval s = run [Run s]
 
@@ -37,38 +40,42 @@ run (EndLoop s : stack) = run (Run s : EndLoop s : stack)
 run (EndBlock : stack) = run stack
 run (EndIf : stack) = run stack
 run (Run s : stack) = step s
-  where step :: Code m -> m ()
+  where step :: WasmStmt s e -> m ()
         step WasmNop = run stack
-        step (WasmUnreachable) = trap
+        step (WasmUnreachable) = fail "unreachable"
         step (WasmBlock s) = run (Run (unL s) : EndBlock : stack)
         step (WasmLoop s) = run (Run (unL s) : EndLoop (unL s) : stack)
-        step (WasmBr (BranchTyped _ k')) = exit (unL k') stack
+        step (WasmBr (BranchTyped bty k')) = exit (unL k') bty stack
+
         step (WasmIf e t f) = do
-          b <- evalPredicate (unL e)
+          b <- evalPredicate $ fromJust $ labelOf e
           run (Run (if b then t else f) : EndIf : stack)
 
-        step (WasmBrIf e (BranchTyped _ k')) = do
-          b <- evalPredicate e
-          if b then exit (unL k') stack else run stack
+        step (WasmBrIf e (BranchTyped bty k')) = do
+          b <- evalPredicate $ fromJust $ labelOf e
+          if b then exit (unL k') bty stack else run stack
 
         step (WasmBrTable e targets default') = do
-          n <- evalEnum (length targets) e
-          if n >= 0 && n < length targets then exit (unL (targets !! n)) stack
-          else exit (unL default') stack
+          n <- evalEnum (fromJust $ labelOf e) (0, length targets)
+          if n >= 0 && n < length targets then exit (unL (targets !! n)) ExitBranch stack
+          else exit (unL default') ExitBranch stack
             
 
         step (WasmReturn) = return ()
 
-        step (WasmSlc s) = takeAction s >> run stack
+        step (WasmSlc s) = (takeAction $ fromJust $ labelOf s) >> run stack
         step (WasmSeq s s') = run (Run s : Run s' : stack)
 
         step (WasmLabel _) = run stack
 
-        exit 0 (EndLoop s : stack) = run (EndLoop s : stack)
-        exit 0 (EndBlock : stack) = run stack
-        exit 0 (EndIf : stack) = run stack
-        exit k (Run _ : stack) = exit k stack
-        exit k (_ : stack) = exit (pred k) stack
-        exit k [] = exitCrash k
+        exit 0 ContinueBranch (EndLoop s : stack) = run (EndLoop s : stack)
+        exit 0 ExitBranch     (EndLoop _ : _) = fail "exit to loop header"
+        exit 0 ExitBranch     (EndBlock : stack) = run stack
+        exit 0 ContinueBranch (EndBlock : _) = fail "continue to block end"
+        exit 0 ExitBranch     (EndIf : stack) = run stack
+        exit 0 ContinueBranch (EndIf : _) = fail "continue to endif"
+        exit k ty (Run _ : stack) = exit k ty stack
+        exit k ty (_ : stack) = exit (pred k) ty stack
+        exit _ _ [] = fail "exit too large"
 
         unL = withoutLabel

@@ -56,8 +56,8 @@ type Context = [ContainingSyntax]
 
 structuredControl :: forall e s .
                      Platform  -- ^ needed for offset calculation
-                  -> (CmmExpr -> e) -- ^ translator for expressions
-                  -> (Block CmmNode O O -> s) -- ^ translator for straight-line code
+                  -> (Label -> CmmExpr -> e) -- ^ translator for expressions
+                  -> (Label -> Block CmmNode O O -> s) -- ^ translator for straight-line code
                   -> CmmGraph -- ^ CFG to be translated
                   -> WasmStmt s e
 structuredControl platform txExpr txBlock g =
@@ -106,18 +106,20 @@ structuredControl platform txExpr txBlock g =
 
      -- (In Peterson, emitBlockX combines case 1 step 6, case 2 step 1, case 2 step 3)
      where emitBlockX context =
-             codeBody x <>
+             codeBody xlabel x <>
              case flowLeaving platform x of
                Unconditional l -> doBranch xlabel l context -- Peterson: case 1 step 6
                Conditional e t f -> -- Peterson: case 1 step 5
                  wasmLabeled xlabel WasmIf
-                      (txExpr e)
+                      (txExpr xlabel e)
                       (doBranch xlabel t (IfThenElse : context))
                       (doBranch xlabel f (IfThenElse : context))
                TerminalFlow -> WasmReturn
                   -- Peterson: case 1 step 6, case 2 steps 2 and 3
                Switch e targets default' ->
-                   WasmBrTable (txExpr e) (map switchIndex targets) (switchIndex default')
+                   wasmLabeled xlabel WasmBrTable (txExpr xlabel e)
+                                                  (map switchIndex targets)
+                                                  (switchIndex default')
             where switchIndex :: Maybe Label -> Labeled Int
                   switchIndex Nothing = wasmUnlabeled id (trapIndex context)
                   switchIndex (Just lbl) = wasmLabeled lbl id (index' lbl context)
@@ -154,8 +156,8 @@ structuredControl platform txExpr txBlock g =
      -- ^ Domination relation (not just immediate domination)
 
    -- | Translate straightline code, which is uninterpreted except by `txBlock`.
-   codeBody :: Block CmmNode C C -> WasmStmt s e
-   codeBody (BlockCC _first middle _last) = WasmSlc (txBlock middle)
+   codeBody :: Label -> Block CmmNode C C -> WasmStmt s e
+   codeBody lbl (BlockCC _first middle _last) = wasmLabeled lbl WasmSlc (txBlock lbl middle)
 
 
 

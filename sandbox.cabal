@@ -69,7 +69,8 @@ executable ptest
     other-modules:  GHC.Cmm.Dataflow.Dominators, DotCfg, SCode,
                     GHC.Wasm.ControlFlow, GHC.Wasm.Ppr.Control,
                     GHC.Wasm.ControlFlow.Run, GHC.Wasm.ControlFlow.OfCmm,
-                    GHC.Cmm.Dataflow.Dominators.Lint
+                    GHC.Cmm.Dataflow.Dominators.Lint,
+                    GHC.Test.ControlMonad
                     
 
     -- LANGUAGE extensions used by modules in this package.

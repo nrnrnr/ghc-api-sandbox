@@ -56,18 +56,18 @@ pprStmt env (WasmIf (lview -> LV _ e) t f) =
 pprStmt _ (WasmBr (BranchTyped ty (lview -> LV l i))) =
     text "br" <+> int i <+> comment (ppr ty <+> text "to" <+> l)
 
-pprStmt env (WasmBrIf e (BranchTyped ty (lview -> LV l i))) =
+pprStmt env (WasmBrIf (lview -> LV _ e) (BranchTyped ty (lview -> LV l i))) =
     pdoc env e $+$
     text "br_if" <+> int i <+> comment (ppr ty <+> text "to" <+> l)
 
-pprStmt env (WasmBrTable e targets default') =
+pprStmt env (WasmBrTable (lview -> LV _ e) targets default') =
     pdoc env e $+$
     text "br_table" <+> hsep (map target targets) <+> target default'
   where target (lview -> LV l i) = int i <+> comment l
 
 pprStmt _ WasmReturn = text "return"
 
-pprStmt env (WasmSlc s) = pdoc env s
+pprStmt env (WasmSlc (lview -> LV _ s)) = pdoc env s
 pprStmt env (WasmSeq a b) = pprStmt env a $+$ pprStmt env b
 
 pprStmt _ (WasmLabel lv)
