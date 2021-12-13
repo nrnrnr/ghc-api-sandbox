@@ -16,12 +16,14 @@ import GHC.Utils.Panic
 
 class MonadFail m => ControlTestMonad m where
   evalPredicate :: Label -> m Bool
-  evalEnum      :: Label -> (Int,Int) -> m Int
+  evalEnum      :: Label -> (Integer,Integer) -> m Integer
                    -- ^ range is half-open: includes low end but not high
   takeAction    :: Label -> m ()
 
 
-data Event = Predicate Label Bool | Switch Label (Int,Int) Int | Action Label
+data Event = Predicate Label Bool
+           | Switch Label (Integer,Integer) Integer
+           | Action Label
 
 {-
 data State = Running { oldEvents :: [Event], futureDecisions :: [Bool] }
@@ -98,14 +100,14 @@ instance ControlTestMonad BitConsuming where
   takeAction lbl = BC $ \bits past -> (Produced (Action lbl : past) (), bits)
 
 
-rangeSelect :: (Int, Int) -> [Bool] -> Maybe (Int, [Bool])
+rangeSelect :: (Integer, Integer) -> [Bool] -> Maybe (Integer, [Bool])
 rangeSelect (lo, limit) bits | lo == pred limit = Just (lo, bits)
 rangeSelect _ [] = Nothing
 rangeSelect (lo, limit) (bit : bits) =
     rangeSelect (if bit then (lo, mid) else (mid, limit)) bits
   where mid = (lo + limit) `div` 2
 
-inverseRangeSelect :: (Int, Int) -> Int -> [Bool]
+inverseRangeSelect :: (Integer, Integer) -> Integer -> [Bool]
 inverseRangeSelect (lo, limit) i
     | lo == pred limit = if i == lo then [] else panic "inverseRangeSelect"
     | otherwise = if i < mid then True : inverseRangeSelect (lo, mid) i

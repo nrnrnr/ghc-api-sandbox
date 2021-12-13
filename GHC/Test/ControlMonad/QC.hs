@@ -6,7 +6,7 @@ import GHC.Test.ControlMonad
 import Test.QuickCheck
 
 
-leftInverse :: (Int, Int) -> Int -> Bool
+leftInverse :: (Integer, Integer) -> Integer -> Bool
 leftInverse range i = rangeSelect range (inverseRangeSelect range i) == Just (i, [])
 
 
@@ -18,7 +18,7 @@ checkVerse = quickCheck $
                      k = lo + leftWidth
                  in  k < limit && width > 1 ==> leftInverse (lo, limit) k
 
-rightInverse :: (Int, Int) -> [Bool] -> Property
+rightInverse :: (Integer, Integer) -> [Bool] -> Property
 rightInverse range bits =
     case rangeSelect range bits of
       Nothing -> property Discard

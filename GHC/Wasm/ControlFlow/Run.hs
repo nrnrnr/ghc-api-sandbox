@@ -56,7 +56,7 @@ run (Run s : stack) = step s
           if b then exit (unL k') bty stack else run stack
 
         step (WasmBrTable e targets default') = do
-          n <- evalEnum (fromJust $ labelOf e) (0, length targets)
+          n <- fromInteger <$> evalEnum (fromJust $ labelOf e) (0, toInteger $ length targets)
           if n >= 0 && n < length targets then exit (unL (targets !! n)) ExitBranch stack
           else exit (unL default') ExitBranch stack
             
