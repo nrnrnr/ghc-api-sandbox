@@ -71,7 +71,9 @@ executable ptest
                     GHC.Wasm.ControlFlow.Run, GHC.Wasm.ControlFlow.OfCmm,
                     GHC.Cmm.Dataflow.Dominators.Lint,
                     GHC.Test.ControlMonad, GHC.Cmm.LoopInfo,
-                    GHC.Test.ControlMonad.QC
+                    GHC.Test.ControlMonad.QC,
+                    GHC.Test.CmmPaths,
+                    GHC.Cmm.ControlFlow.Run
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
