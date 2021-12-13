@@ -1,14 +1,18 @@
 module GHC.Test.ControlMonad 
---  ( ControlTestMonad(..)
---  , Event(..)
---
---
---
---
---  )
+  ( ControlTestMonad(..)
+  , Event(..)
+  , FinalState(..)
+  , BitConsuming
+  , runWithBits
+
+  , rangeSelect
+  , inverseRangeSelect
+
+  )
 where
 
 import GHC.Cmm.Dataflow.Label
+import GHC.Utils.Panic
 
 class MonadFail m => ControlTestMonad m where
   evalPredicate :: Label -> m Bool
@@ -55,8 +59,8 @@ data FinalState a = Produced { pastEvents :: [Event], value :: a }
 data BitConsuming a = BC { unBC :: [Bool] -> [Event] -> (FinalState a, [Bool]) }
 
 
-event :: Event -> BitConsuming ()
-event e = BC $ \bits past -> (Produced (e : past) (), bits)
+--event :: Event -> BitConsuming ()
+--event e = BC $ \bits past -> (Produced (e : past) (), bits)
 
 instance Functor BitConsuming where
   fmap f ma = do { a <- ma; return $ f a }
@@ -100,3 +104,11 @@ rangeSelect _ [] = Nothing
 rangeSelect (lo, limit) (bit : bits) =
     rangeSelect (if bit then (lo, mid) else (mid, limit)) bits
   where mid = (lo + limit) `div` 2
+
+inverseRangeSelect :: (Int, Int) -> Int -> [Bool]
+inverseRangeSelect (lo, limit) i
+    | lo == pred limit = if i == lo then [] else panic "inverseRangeSelect"
+    | otherwise = if i < mid then True : inverseRangeSelect (lo, mid) i
+                  else False : inverseRangeSelect (mid, limit) i
+  where mid = (lo + limit) `div` 2
+
