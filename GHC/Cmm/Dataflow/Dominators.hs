@@ -10,7 +10,9 @@ module GHC.Cmm.Dataflow.Dominators
   , graphWithDominators
   , domlattice
 
+  , graphMap
   , gwdRPNumber
+  , gwdDominatorsOf
   , dominatorsMember
   )
 where 
@@ -23,6 +25,7 @@ import GHC.Cmm.Dataflow.Label
 import GHC.Cmm 
 
 import GHC.Utils.Outputable(Outputable(..), text, int, hcat)
+import GHC.Utils.Panic
 
 -- | An efficient data structure for representing dominator sets.
 -- For details, see Cooper, Keith D., Timothy J. Harvey, and Ken Kennedy. 
@@ -125,7 +128,9 @@ graphMap (CmmGraph { g_graph = GMany NothingO blockmap NothingO }) = blockmap
 gwdRPNumber :: GraphWithDominators node -> Label -> RPNum
 gwdRPNumber g l = mapFindWithDefault unreachableRPNum l (gwd_rpnumbering g)
 
-
+gwdDominatorsOf :: GraphWithDominators node -> Label -> DominatorSet
+gwdDominatorsOf g lbl =
+    mapFindWithDefault (panic "label not reachable in graph") lbl (gwd_dominators g)
 
 dominatorsMember :: Label -> DominatorSet -> Bool
 -- ^ Tells if the given label is in the given
