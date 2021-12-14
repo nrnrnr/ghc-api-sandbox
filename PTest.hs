@@ -81,11 +81,14 @@ showGraph = do
   where thelibdir = libdir
 
 processPath :: SDocContext -> FilePath -> Ghc ()
-processPath context path =
+processPath context path = do
+    liftIO $ putStrLn $ "/*** INPUT: " ++ path ++ " */"
     case takeExtension path of
       ".hs" -> processHs context path
       ".cmm" -> processCmm context path
       _ -> liftIO $ hPutStrLn stderr $ "File with unknown extension: " ++ path
+    liftIO $ putStrLn $ "/*** END: " ++ path ++ " */"
+    liftIO $ putStrLn ""
 
 processHs :: SDocContext -> FilePath -> Ghc ()
 processHs context path = do
@@ -208,7 +211,7 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
             putStrLn "/* <<<<<<<<<<<<<<<<< "
             putStrLn $ "Testing " ++ show (length $ cmmPathResults graph) ++ " path results"
             mapM_ showInterpTest $ cmmPathResults graph
-            putStrLn "/* >>>>>>>>>>>>>>>>> "
+            putStrLn "   >>>>>>>>>>>>>>>>> */ "
 
         showInterpTest t =
             if tracesMatch t then
@@ -313,7 +316,7 @@ blockTagOO b =
     case filter notTick nodes of
       [CmmAssign _ (CmmMachOp _ [CmmReg (CmmGlobal (VanillaReg {}))])] -> Just $ text "prologue"
       [CmmAssign _ (CmmReg (CmmGlobal (VanillaReg {})))] -> Just $ text "prologue"
-      [CmmAssign {}] -> Just $ text "single :="
+      -- [CmmAssign {}] -> Just $ text "single :="
       _ -> case foldl extend Waiting (blockToList b) of
                Waiting -> Nothing
                Called l -> Just $ pdoc genericPlatform l
