@@ -74,7 +74,8 @@ executable ptest
                     GHC.Test.ControlMonad.QC,
                     GHC.Test.CmmPaths,
                     GHC.Cmm.ControlFlow.Run,
-                    FlowTest
+                    FlowTest,
+                    StgToCmmLite
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:

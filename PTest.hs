@@ -19,14 +19,27 @@ import GHC.Wasm.ControlFlow.OfCmm
 
 import System.FilePath as FilePath
 
+import StgToCmmLite (codeGen)
+
 
 import GHC
+import GHC.Core.TyCon
+import GHC.CoreToStg
+import GHC.CoreToStg.Prep
+import GHC.Data.Stream hiding (mapM, map)
 import GHC.Driver.Env
 import GHC.Driver.Errors.Types
 import GHC.Driver.Main
 import GHC.Driver.Session
 import GHC.Platform
+import GHC.Stg.Syntax
+import GHC.Stg.FVs
+import GHC.Types.IPE (emptyInfoTableProvMap)
+import GHC.Types.CostCentre (emptyCollectedCCs)
+import GHC.Types.HpcInfo (emptyHpcInfo)
 import GHC.Unit.Home
+import GHC.Utils.Misc (fstOf3)
+import GHC.Unit.Module.ModGuts
 import GHC.Utils.Error
 import GHC.Utils.Outputable
 import GHC.Utils.Panic
@@ -44,7 +57,7 @@ import GHC.Cmm.Parser
 import GHC.Cmm.Ppr()
 
 import System.Environment ( getArgs )
-import System.IO (stdout)
+import System.IO (stdout, stderr, hPutStrLn)
 
 --import GHC.Wasm.ControlFlow
 import GHC.Wasm.Ppr.Control()
@@ -64,8 +77,47 @@ showGraph = do
         dflags <- getSessionDynFlags
         setSessionDynFlags dflags
         let sdctx = initSDocContext dflags defaultUserStyle
-        mapM_ (processCmm sdctx) args
+        mapM_ (processPath sdctx) args
   where thelibdir = libdir
+
+processPath :: SDocContext -> FilePath -> Ghc ()
+processPath context path =
+    case takeExtension path of
+      ".hs" -> processHs context path
+      ".cmm" -> processCmm context path
+      _ -> liftIO $ hPutStrLn stderr $ "File with unknown extension: " ++ path
+
+processHs :: SDocContext -> FilePath -> Ghc ()
+processHs context path = do
+  target <- guessTarget path Nothing Nothing
+  setTargets [target]
+  mgraph <- depanal [] False
+  mapM_ (dumpSummary context) $ mgModSummaries mgraph
+
+dumpSummary :: SDocContext -> ModSummary -> GHC.Ghc ()
+dumpSummary context summ = do
+  dflags <- getSessionDynFlags
+  env <- getSession
+  guts <- liftIO $ frontend dflags env summ
+  stg <- stgify summ guts
+  logger <- getLogger
+  let infotable = emptyInfoTableProvMap
+  let tycons = []
+  let ccs = emptyCollectedCCs
+  let stg' = depSortWithAnnotStgPgm (ms_mod summ) stg
+  let hpcinfo = emptyHpcInfo False
+  (groups, (_stub, _infos)) <-
+      liftIO $
+      collectAll $
+      codeGen logger dflags (ms_mod summ) infotable tycons ccs stg' hpcinfo
+  liftIO $ mapM_ (dumpGroup context (targetPlatform dflags)) groups
+
+frontend :: DynFlags -> HscEnv -> ModSummary -> IO ModGuts
+frontend _dflags env summary = do
+   parsed <- hscParse env summary
+   (checked, _) <- hscTypecheckRename env summary parsed
+   hscDesugar env summary checked >>= hscSimplify env []
+
 
 processCmm :: SDocContext -> FilePath -> Ghc ()
 processCmm context path = do
@@ -73,6 +125,20 @@ processCmm context path = do
   dflags <- getSessionDynFlags
   group <- liftIO (slurpCmm env path)
   liftIO $ dumpGroup context (targetPlatform dflags) group
+
+stgify :: ModSummary -> ModGuts -> Ghc [StgTopBinding]
+stgify summary guts = do
+    dflags <- getSessionDynFlags
+    env <- getSession
+    prepd_binds <- liftIO $ corePrepPgm env this_mod location core_binds data_tycons
+    return $ fstOf3 $ coreToStg dflags (ms_mod summary) (ms_location summary) prepd_binds
+  where this_mod = mg_module guts
+        location = ms_location summary
+        core_binds = mg_binds guts
+        data_tycons = filter isDataTyCon tycons
+        tycons = mg_tcs guts
+
+
 
 ----------------------------------------------------------------
 
@@ -238,11 +304,6 @@ What goes into a CmmGroup:
 
 
 
-dumpSummary :: SDocContext -> ModSummary -> GHC.Ghc ()
-dumpSummary context summ =
-  liftIO $ printSDocLn context (PageMode True) stdout $ ppr summ
-
-
 
 data Summary = Waiting | AssignedLabel CmmReg CLabel | Called CLabel
 
@@ -274,3 +335,12 @@ blockTag b =
 
 blockBody :: Block CmmNode C C -> Block CmmNode O O
 blockBody (BlockCC _first middle _last) = middle
+
+
+collectAll :: Monad m => Stream m a b -> m ([a], b)
+collectAll = gobble . runStream
+    where gobble (Done b) = return ([], b)
+          gobble (Effect e) = e >>= gobble
+          gobble (Yield a s) = do (as, b) <- gobble s
+                                  return (a:as, b)
+
