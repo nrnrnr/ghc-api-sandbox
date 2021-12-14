@@ -4,14 +4,18 @@ module GHC.Test.ControlMonad
   , FinalState(..)
   , BitConsuming
   , runWithBits
+  , reverseEvents
 
   , rangeSelect
   , inverseRangeSelect
+
+  , traceBits
 
   )
 where
 
 import GHC.Cmm.Dataflow.Label
+import GHC.Utils.Outputable
 import GHC.Utils.Panic
 
 class MonadFail m => ControlTestMonad m where
@@ -24,39 +28,37 @@ class MonadFail m => ControlTestMonad m where
 data Event = Predicate Label Bool
            | Switch Label (Integer,Integer) Integer
            | Action Label
+  deriving (Eq)
 
-{-
-data State = Running { oldEvents :: [Event], futureDecisions :: [Bool] }
-           | Halted { oldEvents :: [Event] }
-           | Failed { oldEvents :: [Event], msg :: String }
+instance Show Event where
+  show (Action l) = labelString l
+  show (Predicate l b) = labelString l ++ "(" ++ (if b then "T" else "F") ++ ")"
+  show (Switch l _ i) =  labelString l ++ "(" ++ show i ++ ")"
 
-data BitsConsumingTest a = BCT { unBCT :: State -> (State, a) }
+labelString :: Label -> String
+labelString = showSDocUnsafe . ppr
 
-instance Functor BitsConsumingTest where
-  fmap f ma = do { a <- ma; return $ f a }
-
-instance Applicative BitsConsumingTest where
-  pure a = BCT $ \s -> (s, a)
-  mf <*> ma = do { f <- mf; a <- ma; return $ f a }
-
-instance Monad BitsConsumingTest where
-  m >>= k = BCT $ \s -> let (s', a) = unBCT m s
-                        in  unBCT (k a) s'
-
-
-                         
---instance MonadFail BitsConsumingTest where
---  fail s = BCT $ withRunning (\events _ -> Failed events msg)
-
-
-withRunning :: ([Event] -> [Bool] -> State) -> State -> State
-withRunning k (Running events bs) = k events bs
-withRunning _ state = state
--}
+traceBits :: [Event] -> [Bool]
+traceBits (Predicate _ b : events) = b : traceBits events
+traceBits (Action _ : events) = traceBits events
+traceBits (Switch _ (lo, hi) i : events) =
+    inverseRangeSelect (lo, succ hi) i ++ traceBits events
+traceBits [] = []
 
 data FinalState a = Produced { pastEvents :: [Event], value :: a }
                   | Halted { pastEvents :: [Event] }
                   | Failed { pastEvents :: [Event], msg :: String }
+
+instance Show a => Show (FinalState a) where
+  show (Produced events a) = show events ++ " -> " ++ show a
+  show (Halted events) = show events ++ " EXHAUSTS"
+  show (Failed events msg) = show events ++ "  FAILED: " ++ msg
+
+reverseEvents :: FinalState a -> FinalState a
+reverseEvents (Produced events a) = Produced (reverse events) a
+reverseEvents (Halted events) = Halted (reverse events)
+reverseEvents (Failed events msg) = Failed (reverse events) msg
+
 
 data BitConsuming a = BC { unBC :: [Bool] -> [Event] -> (FinalState a, [Bool]) }
 
@@ -79,6 +81,8 @@ instance Monad BitConsuming where
                    (Failed past msg, bits') -> (Failed past msg, bits')
                    
 runWithBits :: BitConsuming a -> [Bool] -> FinalState a
+-- ^ Run with Booleans determining decisions, return final
+-- state with most recent event first
 runWithBits m bits = fst $ unBC m bits []
 
 instance MonadFail BitConsuming where

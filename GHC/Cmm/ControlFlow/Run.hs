@@ -2,7 +2,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module GHC.Cmm.ControlFlow.Run
-  ( eval
+  ( evalGraph
   )
 where
 
@@ -20,8 +20,8 @@ import GHC.Test.ControlMonad
 import GHC.Utils.Panic
 
 
-eval :: forall m . ControlTestMonad m => CmmGraph -> m ()
-eval g = run (g_entry g)
+evalGraph :: forall m . ControlTestMonad m => CmmGraph -> m ()
+evalGraph g = run (g_entry g)
   where GMany NothingO blockmap NothingO = g_graph g
         run :: Label -> m ()
         run label = do

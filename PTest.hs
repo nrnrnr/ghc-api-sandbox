@@ -9,6 +9,8 @@ import Data.List hiding (foldl)
 
 import DotCfg
 
+import FlowTest
+
 import Control.Monad
 import Control.Monad.IO.Class
 
@@ -94,8 +96,7 @@ slurpCmm hsc_env filename = runHsc hsc_env $ do
 
 dumpGroup :: SDocContext -> Platform -> CmmGroup -> IO ()
 dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
-  where
-        decl :: ( OutputableP Platform d
+  where decl :: ( OutputableP Platform d
                 , OutputableP Platform h
                 , OutputableP Platform (GenCmmGraph node)
                 , NonLocal node
@@ -131,11 +132,32 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
                          (if dominatorsPassAllChecks graph then "pass" else "FAIL") ++
                          " lint checks"
             putStrLn "   PATHS:"
-            let pprLabel = blockTag . blockLabeled graph 
+            let --pprLabel = blockTag . blockLabeled graph 
+                pprLabel = ppr
                 pprPath' lbls = hcat $ intersperse (text " -> ") (map pprLabel (reverse lbls))
             pprout context $ vcat (map pprPath' $ shortPaths' graph)
             putStrLn "$$$$$$$$$$$$$$ */"
-            
+
+          when True $ do 
+            putStrLn "/* <<<<<<<<<<<<<<<<< "
+            putStrLn $ "Testing " ++ show (length $ cmmPathResults graph) ++ " path results"
+            mapM_ showInterpTest $ cmmPathResults graph
+            putStrLn "/* >>>>>>>>>>>>>>>>> "
+
+        showInterpTest t =
+            if tracesMatch t then
+                putStrLn $ "EXACT: " ++ show (it_input t)
+            else if outputTraceContinues t then
+                putStrLn $ "CONTINUES: " ++ show (it_output t)
+            else
+                do putStrLn $ "NO MATCH:"
+                   putStrLn $ "  " ++ show (it_input t)
+                   putStrLn $ "  " ++ show (it_output t)
+
+
+
+
+  
 
 
 graphMap :: GenCmmGraph n -> LabelMap (Block n C C)

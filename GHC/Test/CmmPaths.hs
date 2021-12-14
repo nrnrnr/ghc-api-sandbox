@@ -1,6 +1,8 @@
 {-# LANGUAGE GADTs #-}
 
 module GHC.Test.CmmPaths
+  ( eventPaths
+  )
 where
 
 import Prelude hiding (succ)
@@ -25,12 +27,14 @@ eventPaths g = map reverse $ pathsPrefixed (g_entry g) [] setEmpty
             -- where a short path is one that contains at most one repeated label,
             -- which must be the last one on the path (and so at the head of the list).
             -- Precondition: `visited == setFromList prefix`.
-        pathsPrefixed lbl prefix visited = toLbl : extensions
-          where toLbl = Action lbl : prefix
+        pathsPrefixed lbl prefix visited = prefix' : extensions
+          where prefix' = Action lbl : prefix
                 visited' = setInsert lbl visited
-                extensions = if setMember lbl visited then []
-                             else concat [pathsPrefixed s toLbl visited' |
-                                            s <- successors (blockLabeled lbl)]
+                extensions = if setMember lbl visited then [prefix']
+                             else concatMap extend (exits $ blockLabeled lbl)
+                extend (Nothing, lbl) = pathsPrefixed lbl prefix' visited'
+                extend (Just event, lbl) = pathsPrefixed lbl (event : prefix') visited'
+
 
         blockLabeled lbl = mapFindWithDefault (panic "missing block") lbl blockmap
 
