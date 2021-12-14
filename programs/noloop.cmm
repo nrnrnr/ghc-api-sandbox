@@ -7,7 +7,7 @@ noloop (bits32 n) {
     if (n > 7) goto F;
   E:
     foreign "C" E();
-    return (0);
+    return (999);
   B: 
     foreign "C" B();
     if (n > 2) goto C;
