@@ -27,6 +27,8 @@ import GHC.Cmm
 import GHC.Utils.Outputable(Outputable(..), text, int, hcat)
 import GHC.Utils.Panic
 
+-- | =Dominator sets
+
 -- | An efficient data structure for representing dominator sets.
 -- For details, see Cooper, Keith D., Timothy J. Harvey, and Ken Kennedy. 
 -- "A simple, fast dominance algorithm." 2006. 
@@ -43,6 +45,40 @@ data DominatorSet = NumberedNode { ds_revpostnum :: RPNum
                   | EntryNode
                   | AllNodes -- equivalent of paper's Undefined
 
+-- | Reverse postorder number of a node in a CFG
+newtype RPNum = RPNum Int
+  deriving (Eq, Ord)
+-- in reverse postorder, nodes closer to the entry have smaller numbers
+
+
+dominatorsMember :: Label -> DominatorSet -> Bool
+-- ^ Tells if the given label is in the given
+-- dominator set.  Which is to say, does the bloc
+-- with with given label _properly_ and _non-vacuously_
+-- dominate the node whose dominator set this is?
+dominatorsMember lbl (NumberedNode _ l p) = l == lbl || dominatorsMember lbl p
+dominatorsMember _   AllNodes  = False -- ^ see Note [Dominator Membership]
+dominatorsMember _   EntryNode = False
+
+
+
+{- [Note Dominator Memership]
+
+Technically AllNodes is the universal set, of which every 
+label should be a member.  But if a block B has dominator set 
+is AllNodes, the dominator relation is vacuous: block B is
+dominated by block A when all paths from the entry to B
+include A.  But _there are no such paths_.  In such a situation
+it is more useful to pretend that B has no dominators.
+
+Also note that technically every block B dominates itself,
+but a `DominatorSet` contains only the *proper* dominators.
+
+-}
+
+
+
+-- | `Monoid` instance; the operation is intersection.
 instance Semigroup DominatorSet where
     d <> d' = getJoined (intersectDomSet (OldFact d) (NewFact d'))
       where getJoined (Changed a) = a
@@ -52,10 +88,6 @@ instance Monoid DominatorSet where
     mempty = AllNodes
 
 
--- | Reverse postorder number of a node in a CFG
-newtype RPNum = RPNum Int
-  deriving (Eq, Ord)
--- in reverse postorder, nodes closer to the entry have smaller numbers
 
 
 
@@ -65,29 +97,32 @@ newtype RPNum = RPNum Int
 -- number of iterations be small and that intersections be computed
 -- quickly.  But there are no measurements.
 
+-- | Efficient intersection of dominator sets
+
 intersectDomSet :: OldFact DominatorSet
                 -> NewFact DominatorSet
                 -> JoinedFact DominatorSet
 intersectDomSet = intersectDomSet' NotChanged
+ where
+  intersectDomSet' :: (DominatorSet -> JoinedFact DominatorSet)
+                   -> OldFact DominatorSet
+                   -> NewFact DominatorSet
+                   -> JoinedFact DominatorSet
+  intersectDomSet' nc (OldFact EntryNode) (NewFact _)         = nc EntryNode
+  intersectDomSet' _  (OldFact _)         (NewFact EntryNode) = Changed EntryNode
+  intersectDomSet' nc (OldFact a)         (NewFact AllNodes)  = nc a
+  intersectDomSet' _  (OldFact AllNodes)  (NewFact a)         = Changed a
+  intersectDomSet' nc ofct@(OldFact (NumberedNode old ol op))
+                      nfct@(NewFact (NumberedNode new _  np))
+    | old < new = intersectDomSet' nc ofct (NewFact np)
+    | old > new = intersectDomSet' Changed (OldFact op) nfct
+    | otherwise = nc (NumberedNode old ol op)
 
-intersectDomSet' :: (DominatorSet -> JoinedFact DominatorSet)
-                 -> OldFact DominatorSet
-                 -> NewFact DominatorSet
-                 -> JoinedFact DominatorSet
-intersectDomSet' nc (OldFact EntryNode) (NewFact _)         = nc EntryNode
-intersectDomSet' _  (OldFact _)         (NewFact EntryNode) = Changed EntryNode
-intersectDomSet' nc (OldFact a)         (NewFact AllNodes)  = nc a
-intersectDomSet' _  (OldFact AllNodes)  (NewFact a)         = Changed a
-intersectDomSet' nc ofct@(OldFact (NumberedNode old ol op))
-                    nfct@(NewFact (NumberedNode new _  np))
-  | old < new = intersectDomSet' nc ofct (NewFact np)
-  | old > new = intersectDomSet' Changed (OldFact op) nfct
-  | otherwise = nc (NumberedNode old ol op)
 
+-- | =Dominator computation via dataflow analysis
 
 -- The code below uses Cmm.Dataflow (Hoopl) to calculate
--- the dominators of each node.  Because it is not so easy to attach
--- a reverse postorder number to each node, the code is a little awkward.
+-- the dominators of each node.  
 
 domlattice :: DataflowLattice DominatorSet
 domlattice = DataflowLattice AllNodes intersectDomSet
@@ -99,10 +134,15 @@ data GraphWithDominators node =
                         }
   -- ^ Dominators and RP numberings include only *reachable* blocks.
 
+
 graphWithDominators :: forall node .
                        (NonLocal node)
                        => GenCmmGraph node
                        -> GraphWithDominators node
+
+-- XXX question for reviewer: should the graph returned be the original graph 
+-- or a new graph containing only the reachable nodes?
+
 graphWithDominators g = GraphWithDominators g dmap rpmap
       where dmap = analyzeCmmFwd domlattice transfer g startFacts
 
@@ -122,6 +162,9 @@ graphWithDominators g = GraphWithDominators g dmap rpmap
             -- ^ reverse postorder number of each node
             nodenum block = mapFindWithDefault unreachableRPNum (entryLabel block) rpmap
 
+
+-- | =Utility functions
+
 graphMap :: GenCmmGraph n -> LabelMap (Block n C C)
 graphMap (CmmGraph { g_graph = GMany NothingO blockmap NothingO }) = blockmap
 
@@ -132,35 +175,14 @@ gwdDominatorsOf :: GraphWithDominators node -> Label -> DominatorSet
 gwdDominatorsOf g lbl =
     mapFindWithDefault (panic "label not reachable in graph") lbl (gwd_dominators g)
 
-dominatorsMember :: Label -> DominatorSet -> Bool
--- ^ Tells if the given label is in the given
--- dominator set.  Which is to say, does the bloc
--- with with given label _properly_ and _non-vacuously_
--- dominate the node whose dominator set this is?
-dominatorsMember lbl (NumberedNode _ l p) = l == lbl || dominatorsMember lbl p
-dominatorsMember _   AllNodes  = False -- ^ see [Note Dominator Membership]
-dominatorsMember _   EntryNode = False
 
-{- [Note Dominator Memership]
-
-Technically AllNodes is the universal set, of which every 
-label should be a member.  But if a block B has dominator set 
-is AllNodes, the dominator relation is vacuous: block B is
-dominated by block A when all paths from the entry to B
-include A.  But _there are no such paths_.  In such a situation
-it is more useful to pretend that B has no dominators.
-
-Also note that technically every block B dominates itself,
-but a `DominatorSet` contains only the *proper* dominators.
-
--}
-
-
-
+-- | =Further support for `RPNum`
 
 
 unreachableRPNum :: RPNum
 unreachableRPNum = RPNum (-1)
+
+
 
 instance Show RPNum where
   show (RPNum i) = "RP" ++ show i
