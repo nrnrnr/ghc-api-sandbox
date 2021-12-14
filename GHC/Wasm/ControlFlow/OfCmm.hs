@@ -6,6 +6,8 @@ module GHC.Wasm.ControlFlow.OfCmm
   )
 where
 
+-- import Debug.Trace
+
 import Prelude hiding (succ)
 
 import Data.Maybe
@@ -22,7 +24,7 @@ import GHC.Platform
 
 import GHC.Utils.Panic
 import GHC.Utils.Outputable (Outputable, text, (<+>), ppr
-                            , showSDocOneLine, defaultSDocContext
+                            , showSDocUnsafe
                             , pprWithCommas
                             )
 
@@ -46,7 +48,7 @@ data ControlFlow e = Unconditional Label
 data ContainingSyntax
     = BlockFollowedBy Label
     | LoopHeadedBy Label
-    | IfThenElse
+    | IfThenElse Label -- label used only for debugging
     | BlockFollowedByTrap
 
 type Context = [ContainingSyntax]
@@ -87,8 +89,14 @@ structuredControl platform txExpr txBlock g =
    doExits  :: CmmBlock -> [CmmBlock] -> Context -> WasmStmt s e
    doBranch :: Label -> Label         -> Context -> WasmStmt s e
 
-   doBlock x context = doExits x (dominatees x) context
-     where dominatees = case lastNode x of CmmSwitch {} -> allDominatees
+   doBlock x context = 
+       if isHeader xlabel then
+           wasmLabeled xlabel WasmLoop (emitBlockX (LoopHeadedBy xlabel : context))
+       else
+           emitBlockX context
+     where xlabel = entryLabel x
+           emitBlockX = doExits x (dominatees x)
+           dominatees = case lastNode x of CmmSwitch {} -> allDominatees
                                            _ -> mergeDominatees
      -- N.B. Dominatees must be ordered with largest RP number first.
      -- (In Peterson, this is case 1 step 2, which I do before step 1)
@@ -98,11 +106,8 @@ structuredControl platform txExpr txBlock g =
        doBlock y context
      where ylabel = entryLabel y
    doExits x [] context =
-       WasmLabel (Labeled xlabel undefined) <>
-       if isHeader xlabel then
-           wasmLabeled xlabel WasmLoop (emitBlockX (LoopHeadedBy xlabel : context))
-       else
-           emitBlockX context
+       -- trace ("Block " ++ showSDocUnsafe (ppr xlabel) ++ headerStatus ++ " in context " ++ showSDocUnsafe (ppr context)) $
+       WasmLabel (Labeled xlabel undefined) <> emitBlockX context
 
      -- (In Peterson, emitBlockX combines case 1 step 6, case 2 step 1, case 2 step 3)
      where emitBlockX context =
@@ -112,8 +117,8 @@ structuredControl platform txExpr txBlock g =
                Conditional e t f -> -- Peterson: case 1 step 5
                  wasmLabeled xlabel WasmIf
                       (txExpr xlabel e)
-                      (doBranch xlabel t (IfThenElse : context))
-                      (doBranch xlabel f (IfThenElse : context))
+                      (doBranch xlabel t (IfThenElse xlabel : context))
+                      (doBranch xlabel f (IfThenElse xlabel : context))
                TerminalFlow -> WasmReturn
                   -- Peterson: case 1 step 6, case 2 steps 2 and 3
                Switch e targets default' ->
@@ -126,6 +131,8 @@ structuredControl platform txExpr txBlock g =
                           
 
            xlabel = entryLabel x
+           -- headerStatus = if isHeader xlabel then " (HEADER)" else " (not header)"
+
 
    -- In Peterson, `doBranch` implements case 2 (and part of case 1)
    doBranch from to context 
@@ -133,7 +140,7 @@ structuredControl platform txExpr txBlock g =
            -- Peterson: case 1 step 4
       | isMergeLabel to = WasmExit to i
       | otherwise = doBlock (blockLabeled to) context
-     where i = index to context
+     where i = index' to context
 
    ---- everything else here is utility functions
 
@@ -324,13 +331,13 @@ hasBlock p g = mapFoldl (\b block -> b || p block) False blockmap
 
 
 pprShow :: Outputable a => a -> String
-pprShow a = showSDocOneLine defaultSDocContext (ppr a)
+pprShow a = showSDocUnsafe (ppr a)
 
 
 instance Outputable ContainingSyntax where
     ppr (BlockFollowedBy l) = text "node" <+> ppr l
     ppr (LoopHeadedBy l) = text "loop" <+> ppr l
-    ppr (IfThenElse) = text "if-then-else"
+    ppr (IfThenElse l) = text "if-then-else" <+> ppr l
     ppr (BlockFollowedByTrap) = text "trap"
 
 stackHas :: Context -> Label -> Bool
