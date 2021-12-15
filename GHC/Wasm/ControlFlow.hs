@@ -19,7 +19,7 @@ where
 
 import Data.Void
 
-import Debug.Trace
+--import Debug.Trace
 
 import GHC.Cmm.Dataflow.Label (Label)
 import GHC.Utils.Outputable hiding ((<>))
@@ -146,9 +146,9 @@ wasmPeepholeOpt = removeFinalBrs []
                           
         removeFinalBrs _ = bad
 
-        smartBlock c lbl (viewSnoc -> (s, WasmBr (BranchTyped t tgt)))
-            | k == 0 = trace ("good opt " ++ viz tgt) $ smartBlock c lbl s -- good
-            | otherwise = trace ("bad opt " ++ viz tgt) $ smartBlock c lbl s <> WasmBr (BranchTyped t (fmap pred tgt)) -- bad
+        smartBlock c lbl (viewSnoc -> (s, WasmBr (BranchTyped _t tgt)))
+            | k == 0 = smartBlock c lbl s -- good opt
+--            | otherwise = smartBlock c lbl s <> WasmBr (BranchTyped t (fmap pred tgt)) -- bad
           where k = withoutLabel tgt
         smartBlock c lbl s = c (lbl s)
 
@@ -163,8 +163,8 @@ wasmPeepholeOpt = removeFinalBrs []
         bad (WasmSeq s s') = WasmSeq (bad s) (bad s')
         bad s = s
 
-        viz tgt = case labelOf tgt of Nothing -> " (unlabeled)"
-                                      Just l -> " br to " ++ showSDocUnsafe (ppr l)
+        _viz tgt = case labelOf tgt of Nothing -> " (unlabeled)"
+                                       Just l -> " br to " ++ showSDocUnsafe (ppr l)
 
 viewSnoc :: WasmStmt s e -> (WasmStmt s e, WasmStmt s e)
 viewSnoc (WasmSeq a (WasmSeq b c)) = viewSnoc (WasmSeq a b `WasmSeq` c)
