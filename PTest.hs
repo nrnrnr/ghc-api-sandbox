@@ -10,6 +10,7 @@ import Data.List hiding (foldl)
 import DotCfg
 
 import FlowTest
+import GHC.Test.ControlMonad 
 
 import Control.Monad
 import Control.Monad.IO.Class
@@ -208,23 +209,49 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
             putStrLn "$$$$$$$$$$$$$$ */"
 
           when True $ do 
+            let (results, ios) = unzip $ map analyzeTest $ cmmPathResults graph
             putStrLn "/* <<<<<<<<<<<<<<<<< "
-            putStrLn $ "Testing " ++ show (length $ cmmPathResults graph) ++ " path results"
-            mapM_ showInterpTest $ cmmPathResults graph
+            putStrLn $ "Testing CMM " ++ show (length $ cmmPathResults graph) ++ " path results"
+            putStrLn $ resultReport results
+            sequence_ ios
             putStrLn "   >>>>>>>>>>>>>>>>> */ "
 
-        showInterpTest t =
+          when True $ do 
+            let (results, ios) = unzip $ map analyzeTest $ wasmPathResults platform graph
+            putStrLn "/* ||||||||||||||||||| "
+            putStrLn $ "Testing Wasm " ++ show (length $ wasmPathResults platform graph) ++ " path results"
+            putStrLn $ resultReport results
+            sequence_ ios
+            putStrLn "   |||||||||||||||||| */ "
+
+        resultReport results =
+            if good == total then "All " ++ show total ++ " results are good"
+            else show good ++ " of " ++ show total ++ " results are good"
+          where total = length results
+                good = length [r | r <- results, r == Good]
+
+        analyzeTest t =
             if tracesMatch t then
-                putStrLn $ "EXACT: " ++ show (it_input t)
+                (Good, putStrLn $ "EXACT: " ++ show (it_input t))
             else if outputTraceContinues t then
-                putStrLn $ "CONTINUES: " ++ show (it_output t)
+                (Good, putStrLn $ "CONTINUES: " ++ show (it_output t))
             else
-                do putStrLn $ "NO MATCH:"
-                   putStrLn $ "  " ++ show (it_input t)
-                   putStrLn $ "  " ++ show (it_output t)
+                ( Bad
+                , do putStrLn $ "NO MATCH:"
+                     putStrLn $ "  " ++ show (it_input t)
+                     putStrLn $ "  " ++ show (it_output t)
+                     putStrLn $ "Differ in position " ++ diffPos t
+                )
+          where diffPos t = badIndex (0::Int) (it_input t) (pastEvents (it_output t))
+                badIndex k [] [] = "PERFECT MATCH at " ++ show k
+                badIndex k (e:es) (e':es')
+                   | e == e' = badIndex (k+1) es es'
+                   | otherwise = show k ++ " (" ++ show e ++ " vs " ++ show e' ++ ")"
+                badIndex k [] (_:_) = show k ++ " (input runs out first)"
+                badIndex k (_:_) [] = show k ++ " (output runs out first)"
 
-
-
+data TestResult = Good | Bad
+  deriving Eq
 
   
 

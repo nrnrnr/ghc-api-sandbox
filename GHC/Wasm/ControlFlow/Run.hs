@@ -2,7 +2,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module GHC.Wasm.ControlFlow.Run
-  ( eval
+  ( evalWasm
   )
 where
 
@@ -27,12 +27,12 @@ import GHC.Test.ControlMonad
 
 data Frame s = EndLoop s | EndBlock | EndIf | Run s
 
-eval :: ControlTestMonad m => WasmStmt s e -> m ()
+evalWasm :: ControlTestMonad m => WasmStmt s e -> m ()
 run  :: forall s e m . ControlTestMonad m => Stack s e -> m ()
 
 type Stack s e = [Frame (WasmStmt s e)]
 
-eval s = run [Run s]
+evalWasm s = run [Run s]
 
 
 run [] = return ()
