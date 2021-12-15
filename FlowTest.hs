@@ -5,6 +5,7 @@ module FlowTest
   , outputTraceContinues
 
   , wasmPathResults
+  , wasmPeepholeResults
 
   )
 where
@@ -16,6 +17,7 @@ import GHC.Cmm.ControlFlow.Run
 import GHC.Platform
 import GHC.Test.CmmPaths
 import GHC.Test.ControlMonad
+import GHC.Wasm.ControlFlow
 import GHC.Wasm.ControlFlow.OfCmm
 import GHC.Wasm.ControlFlow.Run
 
@@ -44,3 +46,11 @@ wasmPathResults platform g = [IT input (reverseEvents $ runWithBits (evalWasm w)
                         | input <- traces ]
   where traces = eventPaths g
         w = structuredControl platform  (\l _ -> l) (\l _ -> l) g
+
+wasmPeepholeResults :: Platform -> CmmGraph -> [InterpTest Trace]
+wasmPeepholeResults platform g =
+    [IT input (reverseEvents $ runWithBits (evalWasm w) (traceBits input))
+                        | input <- traces ]
+  where traces = eventPaths g
+        w = wasmPeepholeOpt $ structuredControl platform  (\l _ -> l) (\l _ -> l) g
+

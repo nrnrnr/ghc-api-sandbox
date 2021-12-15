@@ -19,6 +19,8 @@ where
 
 import Data.Void
 
+import Debug.Trace
+
 import GHC.Cmm.Dataflow.Label (Label)
 import GHC.Utils.Outputable hiding ((<>))
 import GHC.Utils.Panic
@@ -145,8 +147,8 @@ wasmPeepholeOpt = removeFinalBrs []
         removeFinalBrs _ = bad
 
         smartBlock c lbl (viewSnoc -> (s, WasmBr (BranchTyped t tgt)))
-            | k == 0 = smartBlock c lbl s -- good
-            | otherwise = smartBlock c lbl s <> WasmBr (BranchTyped t (fmap pred tgt)) -- bad
+            | k == 0 = trace ("good opt " ++ viz tgt) $ smartBlock c lbl s -- good
+            | otherwise = trace ("bad opt " ++ viz tgt) $ smartBlock c lbl s <> WasmBr (BranchTyped t (fmap pred tgt)) -- bad
           where k = withoutLabel tgt
         smartBlock c lbl s = c (lbl s)
 
@@ -155,11 +157,14 @@ wasmPeepholeOpt = removeFinalBrs []
 
            -- To come: block; nop; end --> nop
 
-        bad (WasmBlock ls) = smartBlock WasmBlock (labelAs ls) (withoutLabel ls)
-        bad (WasmLoop ls)  = smartBlock WasmLoop (labelAs ls) (withoutLabel ls)
+        bad (WasmBlock ls) = smartBlock WasmBlock (labelAs ls) (bad $ withoutLabel ls)
+        bad (WasmLoop ls)  = smartBlock WasmLoop (labelAs ls) (bad $ withoutLabel ls)
         bad (WasmIf e t f) = WasmIf e (bad t) (bad f)
         bad (WasmSeq s s') = WasmSeq (bad s) (bad s')
         bad s = s
+
+        viz tgt = case labelOf tgt of Nothing -> " (unlabeled)"
+                                      Just l -> " br to " ++ showSDocUnsafe (ppr l)
 
 viewSnoc :: WasmStmt s e -> (WasmStmt s e, WasmStmt s e)
 viewSnoc (WasmSeq a (WasmSeq b c)) = viewSnoc (WasmSeq a b `WasmSeq` c)

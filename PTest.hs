@@ -16,6 +16,7 @@ import Control.Monad
 import Control.Monad.IO.Class
 
 import GHC.Wasm.ControlFlow.OfCmm
+import GHC.Wasm.ControlFlow
 
 
 import System.FilePath as FilePath
@@ -223,6 +224,24 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
             putStrLn $ "Wasm: " ++ resultReport results
             sequence_ ios
             putStrLn "   |||||||||||||||||| */ "
+
+          when True $ do
+            putStrLn "/* Peephole: @@@@@@@@@@@@@@@@@@@@ "
+            let pprCode block = text "CODE:" <+> (fromMaybe (text "?") $ blockTagOO block)
+                code = wasmPeepholeOpt $
+                       structuredControl platform (\_ -> id) (\_ -> pprCode) graph
+            pprout context $ pdoc platform code
+            putStrLn "@@@@@@@@@@@@@@@@@@@ */"
+
+
+
+          when True $ do 
+            let (results, ios) = unzip $ map analyzeTest $ wasmPeepholeResults platform graph
+            putStrLn "/* ##################### "
+            putStrLn $ "Testing peephole " ++ show (length $ wasmPeepholeResults platform graph) ++ " path results"
+            putStrLn $ "Peep: " ++ resultReport results
+            sequence_ ios
+            putStrLn "   ##################### */ "
 
         resultReport results =
             if good == total then "All " ++ show total ++ " results are good"
