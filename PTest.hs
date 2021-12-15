@@ -212,7 +212,7 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
             let (results, ios) = unzip $ map analyzeTest $ cmmPathResults graph
             putStrLn "/* <<<<<<<<<<<<<<<<< "
             putStrLn $ "Testing CMM " ++ show (length $ cmmPathResults graph) ++ " path results"
-            putStrLn $ resultReport results
+            putStrLn $ "CMM:  " ++ resultReport results
             sequence_ ios
             putStrLn "   >>>>>>>>>>>>>>>>> */ "
 
@@ -220,7 +220,7 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
             let (results, ios) = unzip $ map analyzeTest $ wasmPathResults platform graph
             putStrLn "/* ||||||||||||||||||| "
             putStrLn $ "Testing Wasm " ++ show (length $ wasmPathResults platform graph) ++ " path results"
-            putStrLn $ resultReport results
+            putStrLn $ "Wasm: " ++ resultReport results
             sequence_ ios
             putStrLn "   |||||||||||||||||| */ "
 
