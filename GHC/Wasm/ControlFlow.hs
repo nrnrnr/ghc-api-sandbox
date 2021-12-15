@@ -5,6 +5,7 @@ module GHC.Wasm.ControlFlow
   ( WasmStmt(..)
   , Labeled, pattern Labeled, withoutLabel, labelOf
   , BranchTyped(..), BranchType(..)
+  , BrTableInterval(..), inclusiveInterval
   , pattern WasmExit, pattern WasmContinue
 
   , wasmLabeled
@@ -81,7 +82,13 @@ data WasmStmt s e where
 
   WasmBr   :: BranchTyped (Labeled Int) -> WasmStmt s e
   WasmBrIf :: Labeled e -> BranchTyped (Labeled Int) -> WasmStmt s e
-  WasmBrTable :: Labeled e -> [Labeled Int] -> Labeled Int -> WasmStmt s e
+  WasmBrTable :: Labeled e
+              -> BrTableInterval -- for debugging only
+              -> [Labeled Int]
+              -> Labeled Int
+              -> WasmStmt s e
+              -- invariant: the table interval is contained
+              -- within [0 .. pred (length targets)]
   WasmReturn :: WasmStmt s e
 
   WasmSlc :: Labeled s -> WasmStmt s e   -- straight-line code
@@ -90,6 +97,19 @@ data WasmStmt s e where
   WasmLabel :: Labeled Void -> WasmStmt s e -- pure sanity-checking play
 
   WasmUnreachable :: WasmStmt s e
+
+
+data BrTableInterval
+    = BrTableInterval { bti_lo :: Integer, bti_count :: Integer }
+
+instance Outputable BrTableInterval where
+  ppr range = brackets $ hcat[integer (bti_lo range), text "..", integer hi]
+      where hi = bti_lo range + bti_count range - 1
+
+inclusiveInterval :: Integer -> Integer -> BrTableInterval
+inclusiveInterval lo hi
+    | lo <= hi = BrTableInterval lo (hi - lo + 1)
+    | otherwise = panic "GHC.Wasm.ControlFlow: empty interval"
 
 pattern WasmExit :: Label -> Int -> WasmStmt s e
 pattern WasmContinue :: Label -> Int -> WasmStmt s e

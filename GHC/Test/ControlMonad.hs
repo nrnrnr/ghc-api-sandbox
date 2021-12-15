@@ -33,7 +33,7 @@ data Event = Predicate Label Bool
 instance Show Event where
   show (Action l) = labelString l
   show (Predicate l b) = labelString l ++ "(" ++ (if b then "T" else "F") ++ ")"
-  show (Switch l _ i) =  labelString l ++ "(" ++ show i ++ ")"
+  show (Switch l (lo,hi) i) =  labelString l ++ "(" ++ show i ++ " in [" ++ show lo ++ "," ++ show hi ++ "])"
 
 labelString :: Label -> String
 labelString = showSDocUnsafe . ppr
@@ -42,7 +42,7 @@ traceBits :: [Event] -> [Bool]
 traceBits (Predicate _ b : events) = b : traceBits events
 traceBits (Action _ : events) = traceBits events
 traceBits (Switch _ (lo, hi) i : events) =
-    inverseRangeSelect (lo, succ hi) i ++ traceBits events
+    inverseRangeSelect (lo, hi) i ++ traceBits events
 traceBits [] = []
 
 data FinalState a = Produced { pastEvents :: [Event], value :: a }

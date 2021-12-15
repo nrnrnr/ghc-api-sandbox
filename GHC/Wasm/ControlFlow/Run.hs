@@ -55,8 +55,9 @@ run (Run s : stack) = step s
           b <- evalPredicate $ fromJust $ labelOf e
           if b then exit (unL k') bty stack else run stack
 
-        step (WasmBrTable e targets default') = do
-          n <- fromInteger <$> evalEnum (fromJust $ labelOf e) (0, toInteger $ length targets)
+        step (WasmBrTable e range targets default') = do
+          n <- fromInteger <$>
+               evalEnum (fromJust $ labelOf e) (bti_lo range, bti_lo range + bti_count range)
           if n >= 0 && n < length targets then exit (unL (targets !! n)) ExitBranch stack
           else exit (unL default') ExitBranch stack
             

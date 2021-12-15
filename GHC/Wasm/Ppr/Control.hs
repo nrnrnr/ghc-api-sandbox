@@ -60,8 +60,8 @@ pprStmt env (WasmBrIf (lview -> LV _ e) (BranchTyped ty (lview -> LV l i))) =
     pdoc env e $+$
     text "br_if" <+> int i <+> comment (ppr ty <+> text "to" <+> l)
 
-pprStmt env (WasmBrTable (lview -> LV _ e) targets default') =
-    pdoc env e $+$
+pprStmt env (WasmBrTable (lview -> LV _ e) range targets default') =
+    pdoc env e <+> comment (ppr range) $+$
     text "br_table" <+> hsep (map target targets) <+> target default'
   where target (lview -> LV l i) = int i <+> comment l
 

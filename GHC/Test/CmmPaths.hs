@@ -57,7 +57,7 @@ exits b =
                                      Just lbl -> lbl
                                      Nothing -> panic "GHC.Tests.CmmPaths.exit: no default"
                              (_ : _ : _) -> panic "GHC.Tests.CmmPaths.exit: too many matches"
-          in  [(Just $ Switch blabel (lo, hi) i, labelOf i) | i <- [lo..hi]]
+          in  [(Just $ Switch blabel (lo, hi + 1) i, labelOf i) | i <- [lo..hi]]
 
           
       CmmCall { cml_cont = Just l } -> [(Nothing, l)]

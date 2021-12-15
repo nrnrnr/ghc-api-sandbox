@@ -37,7 +37,8 @@ import GHC.Wasm.ControlFlow
 
 data ControlFlow e = Unconditional Label
                    | Conditional e Label Label
-                   | Switch { _scrutinee :: e 
+                   | Switch { _scrutinee :: e
+                            , _range :: BrTableInterval
                             , _targets :: [Maybe Label] -- from 0
                             , _defaultTarget :: Maybe Label
                             }
@@ -121,8 +122,9 @@ structuredControl platform txExpr txBlock g =
                       (doBranch xlabel f (IfThenElse xlabel : context))
                TerminalFlow -> WasmReturn
                   -- Peterson: case 1 step 6, case 2 steps 2 and 3
-               Switch e targets default' ->
+               Switch e range targets default' ->
                    wasmLabeled xlabel WasmBrTable (txExpr xlabel e)
+                                                  range
                                                   (map switchIndex targets)
                                                   (switchIndex default')
             where switchIndex :: Maybe Label -> Labeled Int
@@ -275,9 +277,11 @@ flowLeaving platform b =
       CmmCondBranch c t f _ -> Conditional c t f
       CmmSwitch e targets ->
           let (offset, target_labels) = switchTargetsToTable targets
+              (lo, hi) = switchTargetsRange targets
               default_label = switchTargetsDefault targets
               scrutinee = smartPlus platform e offset
-          in  Switch scrutinee target_labels default_label
+              range = inclusiveInterval (lo+toInteger offset) (hi+toInteger offset)
+          in  Switch scrutinee range target_labels default_label
           
       CmmCall { cml_cont = Just l } -> Unconditional l
       CmmCall { cml_cont = Nothing } -> TerminalFlow
