@@ -1,5 +1,6 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module GHC.Wasm.ControlFlow 
   ( WasmStmt(..)
@@ -19,22 +20,21 @@ where
 import Data.Void
 
 import GHC.Cmm.Dataflow.Label (Label)
-import GHC.Utils.Outputable
+import GHC.Utils.Outputable hiding ((<>))
 import GHC.Utils.Panic
 
 -- | Models the control-flow portion of the WebAssembly instruction set
 
-data Labeled a = Labeled Label a  -- See [Note labels]
-               | Unlabeled a
-
-withoutLabel :: Labeled a -> a
-withoutLabel (Labeled _ a) = a
-withoutLabel (Unlabeled a) = a
+data Labeled a = Labeled { _lb_label :: Label, withoutLabel :: a }  -- See [Note labels]
+               | Unlabeled { withoutLabel :: a }
 
 labelOf :: Labeled a -> Maybe Label
 labelOf (Labeled l _) = Just l
 labelOf (Unlabeled _) = Nothing
 
+instance Functor Labeled where
+  fmap f (Labeled l a) = Labeled l (f a)
+  fmap f (Unlabeled a) = Unlabeled (f a)
 
 -- [Note labels]
 --
@@ -129,10 +129,47 @@ instance Semigroup (WasmStmt s e) where
 instance Monoid (WasmStmt s e) where
   mempty = WasmNop
 
+labelAs :: Labeled a -> b -> Labeled b
+labelAs la b = fmap (const b) la
+
 
 wasmPeepholeOpt :: WasmStmt s e -> WasmStmt s e
-wasmPeepholeOpt _ = panic "peephole optimizer not implemented"
+wasmPeepholeOpt = removeFinalBrs []
+  where removeFinalBrs :: [Int] -> WasmStmt s e -> WasmStmt s e
+        -- ^ 1st argument lists every `i` for which `br i` is
+        -- equivalent to "fall through" in this context
+        -- 
+        -- rewrite rules
+
+                          
+        removeFinalBrs _ = bad
+
+        smartBlock c lbl (viewSnoc -> (s, WasmBr (BranchTyped t tgt)))
+            | k == 0 = smartBlock c lbl s -- good
+            | otherwise = smartBlock c lbl s <> WasmBr (BranchTyped t (fmap pred tgt)) -- bad
+          where k = withoutLabel tgt
+        smartBlock c lbl s = c (lbl s)
+
+           -- GOOD: block s; br 0 end --> block s end
+           -- BAD: block s; br (m + 1) end --> block s end; br m
+
+           -- To come: block; nop; end --> nop
+
+        bad (WasmBlock ls) = smartBlock WasmBlock (labelAs ls) (withoutLabel ls)
+        bad (WasmLoop ls)  = smartBlock WasmLoop (labelAs ls) (withoutLabel ls)
+        bad (WasmIf e t f) = WasmIf e (bad t) (bad f)
+        bad (WasmSeq s s') = WasmSeq (bad s) (bad s')
+        bad s = s
+
+viewSnoc :: WasmStmt s e -> (WasmStmt s e, WasmStmt s e)
+viewSnoc (WasmSeq a (WasmSeq b c)) = viewSnoc (WasmSeq a b `WasmSeq` c)
+viewSnoc (WasmSeq a b) = (a, b)
+viewSnoc s = (WasmNop, s)
+
+
 
 wasmControlFaults :: WasmStmt s e -> Maybe SDoc
 wasmControlFaults _ = panic "fault checking not implemented"
+
+
 
