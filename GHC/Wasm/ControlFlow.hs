@@ -1,6 +1,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module GHC.Wasm.ControlFlow 
   ( WasmStmt(..)
@@ -126,26 +127,52 @@ wasmUnlabeled :: (Labeled a -> b) -> a -> b
 wasmUnlabeled c a = c (Unlabeled a)
 
 instance Semigroup (WasmStmt s e) where
-  (<>) = WasmSeq
+  (<>) WasmNop a = a
+  (<>) a WasmNop = a
+  (<>) a b = WasmSeq a b
 
 instance Monoid (WasmStmt s e) where
   mempty = WasmNop
 
-labelAs :: Labeled a -> b -> Labeled b
-labelAs la b = fmap (const b) la
+--labelAs :: Labeled a -> b -> Labeled b
+--labelAs la b = fmap (const b) la
 
+data FallThroughSet = EmptyFT | AtMost Int
 
-wasmPeepholeOpt :: WasmStmt s e -> WasmStmt s e
-wasmPeepholeOpt = removeFinalBrs []
-  where removeFinalBrs :: [Int] -> WasmStmt s e -> WasmStmt s e
+addZeroBump :: FallThroughSet -> FallThroughSet
+addZeroBump EmptyFT = AtMost 0
+addZeroBump (AtMost k) = AtMost (succ k)
+
+wasmPeepholeOpt :: forall s e . WasmStmt s e -> WasmStmt s e
+wasmPeepholeOpt = removeFinalBrs EmptyFT
+  where removeFinalBrs :: FallThroughSet -> WasmStmt s e -> WasmStmt s e
         -- ^ 1st argument lists every `i` for which `br i` is
         -- equivalent to "fall through" in this context
         -- 
         -- rewrite rules
+        removeFinalBrs fts = tx
+            where inner :: WasmStmt s e -> WasmStmt s e
+                  inner = removeFinalBrs (addZeroBump fts)
+                  tx (WasmBr (BranchTyped _ tgt))
+                      | fts `hasTgt` (withoutLabel tgt) = WasmNop
+                  tx (WasmBlock body) = smartBlock (fmap inner body)
+                  tx (WasmLoop body) = WasmLoop (fmap (removeFinalBrs (AtMost 0)) body)
+                  tx (WasmIf e t f) = WasmIf e (inner t) (inner f)
+                  tx (WasmBrIf _ (BranchTyped _ tgt))
+                      | fts `hasTgt` (withoutLabel tgt) = WasmNop
+                  tx (WasmSeq a b) = case tx b of
+                                       WasmNop -> tx a
+                                       b' -> removeFinalBrs EmptyFT a <> b'
+                  tx s = s
+                  
 
-                          
-        removeFinalBrs _ = bad
+        EmptyFT `hasTgt` _ = False
+        AtMost n `hasTgt` k = k <= n
 
+        smartBlock s | WasmNop <- withoutLabel s = WasmNop
+        smartBlock s = WasmBlock s
+
+{-
         smartBlock c lbl (viewSnoc -> (s, WasmBr (BranchTyped _t tgt)))
             | k == 0 = smartBlock c lbl s -- good opt
 --            | otherwise = smartBlock c lbl s <> WasmBr (BranchTyped t (fmap pred tgt)) -- bad
@@ -171,6 +198,10 @@ viewSnoc (WasmSeq a (WasmSeq b c)) = viewSnoc (WasmSeq a b `WasmSeq` c)
 viewSnoc (WasmSeq a b) = (a, b)
 viewSnoc s = (WasmNop, s)
 
+
+
+
+-}
 
 
 wasmControlFaults :: WasmStmt s e -> Maybe SDoc
