@@ -70,6 +70,7 @@ executable ptest
                     GHC.Wasm.ControlFlow, GHC.Wasm.Ppr.Control,
                     GHC.Wasm.ControlFlow.Run, GHC.Wasm.ControlFlow.OfCmm,
                     GHC.Cmm.Dataflow.Dominators.Lint,
+                    GHC.Cmm.Reducibility,
                     GHC.Test.ControlMonad, GHC.Cmm.LoopInfo,
                     GHC.Test.ControlMonad.QC,
                     GHC.Test.CmmPaths,
