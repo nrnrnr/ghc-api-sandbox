@@ -27,12 +27,12 @@ common program-default-options
 --  executable sandbox
 --      import: program-default-options
 --      main-is:          Main.hs
---  
+--
 --      -- Modules included in this executable, other than Main.
 --      other-modules:  StgToCmmLite, StackLang, Simple.Stg, Simple.Stack,
 --                      Simple.Stg.Outputable,
 --                      Simple.ImportStg, Simple.Codegen, Simple.Common
---  
+--
 --      -- LANGUAGE extensions used by modules in this package.
 --      -- other-extensions:
 --      build-depends:    base >=4.14.2.0,
@@ -40,17 +40,17 @@ common program-default-options
 --                        bytestring >= 0.10
 --      hs-source-dirs:   .
 --      default-language: Haskell2010
---  
+--
 --  executable showcfg
 --      import: program-default-options
 --      main-is:          ShowCfg.hs
---  
+--
 --      -- Modules included in this executable, other than Main.
 --      other-modules:  StgToCmmLite, StackLang, Simple.Stg, Simple.Stack,
 --                      Simple.Stg.Outputable,
 --                      Simple.ImportStg, Simple.Codegen, Simple.Common,
 --                      DotCfg, GHC.Cmm.Dataflow.Dominators, Peterson, PetersonR
---  
+--
 --      -- LANGUAGE extensions used by modules in this package.
 --      -- other-extensions:
 --      build-depends:    base >=4.14.2.0,
@@ -58,7 +58,7 @@ common program-default-options
 --                        bytestring >= 0.10
 --      hs-source-dirs:   .
 --      default-language: Haskell2010
---  
+--
 --      ghc-options:
 
 executable ptest
@@ -69,6 +69,7 @@ executable ptest
     other-modules:  GHC.Cmm.Dataflow.Dominators, DotCfg, SCode,
                     GHC.Wasm.ControlFlow, GHC.Wasm.Ppr.Control,
                     GHC.Wasm.ControlFlow.Run, GHC.Wasm.ControlFlow.OfCmm,
+                    GHC.WasmNCG.WasmNCG,
                     GHC.Cmm.Dataflow.Dominators.Lint,
                     GHC.Test.ControlMonad, GHC.Cmm.LoopInfo,
                     GHC.Test.ControlMonad.QC,
@@ -88,4 +89,3 @@ executable ptest
     default-language: Haskell2010
 
     ghc-options:
-
