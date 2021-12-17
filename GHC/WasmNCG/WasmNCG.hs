@@ -21,6 +21,11 @@ wasmNCG = undefined
 
 The subset of sections we support.
 
+* Definitions are listed in the order where they appear in modules,
+  but they may be generated in a different order
+* Each definition contain enough info to write a SomeSection ->
+  ByteString function without requiring additional context
+
 -}
 data TypeSection
 data ImportSection
