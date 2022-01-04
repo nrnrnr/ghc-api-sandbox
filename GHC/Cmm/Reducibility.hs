@@ -94,6 +94,7 @@ Johan Janssen and Henk Corporaal. 1997. Making graphs reducible with
 controlled node splitting. ACM TOPLAS 19, 6 (Nov. 1997),
 1031–1052. DOI:https://doi.org/10.1145/267959.269971
 
-
+https://rgrig.blogspot.com/2009/10/dtfloatleftclearleft-summary-of-some.html
+ (Nice summary of useful facts)
 
 -}
