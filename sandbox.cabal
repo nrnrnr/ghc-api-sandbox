@@ -75,6 +75,7 @@ executable ptest
                     GHC.Test.ControlMonad.QC,
                     GHC.Test.CmmPaths,
                     GHC.Cmm.ControlFlow.Run,
+                    GHC.Wasm.ControlFlow.Collapse,
                     FlowTest,
                     StgToCmmLite
 
