@@ -8,13 +8,14 @@ where
 
 import Control.Exception
 
+
 --import Prelude hiding (succ)
 --
---import Data.Maybe
+import Data.Maybe
 --
 --import GHC.Cmm
 --import GHC.Cmm.Dataflow.Block
---import GHC.Cmm.Dataflow.Collections
+import GHC.Cmm.Dataflow.Collections
 --import GHC.Cmm.Dataflow.Dominators
 --import GHC.Cmm.Dataflow.Graph
 import GHC.Cmm.Dataflow.Label
@@ -44,11 +45,16 @@ mapMinus :: IsMap map => map a -> KeyOf map -> map a
 mapMinus = flip mapDelete
 
 setMap :: IsSet set => (ElemOf set -> ElemOf set) -> set -> set
+setMap f = setFoldl (\mapped a -> setInsert (f a) mapped) setEmpty
 
+isSingleton :: IsSet set => set -> Bool
+isSingleton s = case setElems s of [_] -> True
+                                   _ -> False
 
 consumeBy toL fromL g =
   assert (isSingleton $ setMap meaning $ preds to) $
   assert (not $ mapMember toL (aliases g)) $
+  error "unfinished" from' nodeMap' aliases'
  where to = node toL
        from = node fromL
        node label = fromJust $ mapLookup (meaning label) (nodeMap g)
@@ -75,7 +81,6 @@ consumeableEdge :: Graph -> Maybe (Label, Label)
 hasExactlyOneNode :: Graph -> Bool
 leastSplittable :: Graph -> Label
 
-consumeBy = error "unimp"
 split = error "unimp"
 consumeableEdge = error "unimp"
 hasExactlyOneNode = error "unimp"
