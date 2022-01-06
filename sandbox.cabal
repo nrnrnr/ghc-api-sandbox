@@ -76,6 +76,7 @@ executable ptest
                     GHC.Test.CmmPaths,
                     GHC.Cmm.ControlFlow.Run,
                     GHC.Wasm.ControlFlow.Collapse,
+                    GHC.Data.Graph.Inductive,
                     FlowTest,
                     StgToCmmLite
 
