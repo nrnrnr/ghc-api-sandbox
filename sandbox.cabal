@@ -84,6 +84,7 @@ executable ptest
     -- other-extensions:
     build-depends:    base >=4.14.2.0,
                       ghc >= 9.3,
+                      ghc-boot >= 9.3,
                       bytestring >= 0.10,
                       filepath >= 1.4,
                       QuickCheck >= 2.14.2
