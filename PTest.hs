@@ -58,6 +58,8 @@ import GHC.Cmm.Dataflow.Label
 import GHC.Cmm.Parser
 import GHC.Cmm.Ppr()
 
+import qualified GHC.LanguageExtensions as LangExt
+
 import System.Environment ( getArgs )
 import System.IO (stdout, stderr, hPutStrLn)
 
@@ -76,7 +78,8 @@ showGraph = do
     args <- getArgs
     defaultErrorHandler defaultFatalMessager defaultFlushOut $ do
       runGhc (Just thelibdir) $ do
-        dflags <- getSessionDynFlags
+        raw_dflags <- getSessionDynFlags
+        let dflags = xopt_set raw_dflags LangExt.MagicHash 
         setSessionDynFlags dflags
         let sdctx = initSDocContext dflags defaultUserStyle
         mapM_ (processPath sdctx) args
@@ -190,7 +193,7 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
             pprout context $ pdoc platform graph
             putStrLn "*********/"
 
-          when True $ do
+          when False $ do
             putStrLn "/* ============= "
             let pprCode block = text "CODE:" <+> (fromMaybe (text "?") $ blockTagOO block)
                 code = structuredControl platform (\_ -> id) (\_ -> pprCode) graph
@@ -217,7 +220,7 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
             sequence_ ios
             putStrLn "   >>>>>>>>>>>>>>>>> */ "
 
-          when True $ do 
+          when False $ do 
             let (results, ios) = unzip $ map analyzeTest $ wasmPathResults platform graph
             putStrLn "/* ||||||||||||||||||| "
             putStrLn $ "Testing Wasm " ++ show (length $ wasmPathResults platform graph) ++ " path results"
@@ -225,7 +228,7 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
             sequence_ ios
             putStrLn "   |||||||||||||||||| */ "
 
-          when True $ do
+          when False $ do
             putStrLn "/* Peephole: @@@@@@@@@@@@@@@@@@@@ "
             let pprCode block = text "CODE:" <+> (fromMaybe (text "?") $ blockTagOO block)
                 code = wasmPeepholeOpt $
@@ -235,7 +238,7 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
 
 
 
-          when True $ do 
+          when False $ do 
             let (results, ios) = unzip $ map analyzeTest $ wasmPeepholeResults platform graph
             putStrLn "/* ##################### "
             putStrLn $ "Testing peephole " ++ show (length $ wasmPeepholeResults platform graph) ++ " path results"

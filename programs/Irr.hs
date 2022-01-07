@@ -1,18 +1,18 @@
+{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE MagicHash #-}
+
 module Irr
 where
 
-data List a = Nil | Cons a (List a)
+import GHC.Exts
 
---length' :: Bool -> List a -> Int
---length' trigger xs = if trigger then countA 0 xs else countB 0 xs
---  where countA n Nil = case n of m -> m
---        countA n (Cons _ as) = case n + 1 of m -> case countB m as of k -> k
---        countB n Nil = case n of m -> m
---        countB n (Cons _ as) = case n + 2 of m -> case countA m as of k -> k
+data List a = Nil | Cons !a !(List a)
 
-length'' :: Bool -> List a -> Int
-length'' trigger xs = if trigger then countA 0 xs else countB 0 xs
-  where countA n Nil = case n of m -> m
-        countA n (Cons _ as) = case n + 1 of m -> countB m as
-        countB n Nil = case n of m -> m
-        countB n (Cons _ as) = case n + 2 of m -> countA m as
+length'' :: Bool -> List a -> Int#
+length'' !trigger !xs = if trigger then countA 0# xs else countB 0# xs
+  where countA !n Nil = n
+        countA !n (Cons _ as) = countB (n +# 1#) as
+        countB !n Nil = n
+        countB !n (Cons _ as) = countA (n +# 2#) as
+        {-# NOINLINE countA #-}
+        {-# NOINLINE countB #-}
