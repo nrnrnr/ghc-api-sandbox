@@ -18,6 +18,8 @@ import Control.Monad.IO.Class
 import GHC.Wasm.ControlFlow.OfCmm
 import GHC.Wasm.ControlFlow
 
+import GHC.Cmm.Dataflow.Dominators
+
 
 import System.FilePath as FilePath
 
@@ -79,7 +81,10 @@ showGraph = do
     defaultErrorHandler defaultFatalMessager defaultFlushOut $ do
       runGhc (Just thelibdir) $ do
         raw_dflags <- getSessionDynFlags
-        let dflags = xopt_set raw_dflags LangExt.MagicHash 
+        let dflags = raw_dflags `xopt_set` LangExt.MagicHash
+                         `xopt_set` LangExt.StandaloneKindSignatures
+                         `xopt_set` LangExt.UnliftedDatatypes
+                         `xopt_set` LangExt.DataKinds
         setSessionDynFlags dflags
         let sdctx = initSDocContext dflags defaultUserStyle
         mapM_ (processPath sdctx) args
@@ -183,6 +188,7 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
           putStrLn $ show label ++ "(" ++ show sty ++ "):"
           pprout context $ pdoc platform d
         decl platform (CmmProc h entry registers graph) = do
+          let r = reducibility (graphWithDominators graph)
           printSDocLn context (PageMode True) stdout $ dotCFG blockTag (ppr entry) graph
 
           when True $ do
@@ -193,7 +199,7 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
             pprout context $ pdoc platform graph
             putStrLn "*********/"
 
-          when False $ do
+          when (True && r == Reducible) $ do
             putStrLn "/* ============= "
             let pprCode block = text "CODE:" <+> (fromMaybe (text "?") $ blockTagOO block)
                 code = structuredControl platform (\_ -> id) (\_ -> pprCode) graph
@@ -212,7 +218,7 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
             pprout context $ vcat (map pprPath' $ shortPaths' graph)
             putStrLn "$$$$$$$$$$$$$$ */"
 
-          when True $ do 
+          when False $ do 
             let (results, ios) = unzip $ map analyzeTest $ cmmPathResults graph
             putStrLn "/* <<<<<<<<<<<<<<<<< "
             putStrLn $ "Testing CMM " ++ show (length $ cmmPathResults graph) ++ " path results"
@@ -220,7 +226,7 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
             sequence_ ios
             putStrLn "   >>>>>>>>>>>>>>>>> */ "
 
-          when False $ do 
+          when (True && r == Reducible) $ do 
             let (results, ios) = unzip $ map analyzeTest $ wasmPathResults platform graph
             putStrLn "/* ||||||||||||||||||| "
             putStrLn $ "Testing Wasm " ++ show (length $ wasmPathResults platform graph) ++ " path results"
@@ -228,7 +234,7 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
             sequence_ ios
             putStrLn "   |||||||||||||||||| */ "
 
-          when False $ do
+          when (True && r == Reducible) $ do
             putStrLn "/* Peephole: @@@@@@@@@@@@@@@@@@@@ "
             let pprCode block = text "CODE:" <+> (fromMaybe (text "?") $ blockTagOO block)
                 code = wasmPeepholeOpt $
@@ -238,7 +244,7 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
 
 
 
-          when False $ do 
+          when (True && r == Reducible) $ do 
             let (results, ios) = unzip $ map analyzeTest $ wasmPeepholeResults platform graph
             putStrLn "/* ##################### "
             putStrLn $ "Testing peephole " ++ show (length $ wasmPeepholeResults platform graph) ++ " path results"
@@ -277,9 +283,6 @@ data TestResult = Good | Bad
 
   
 
-
-graphMap :: GenCmmGraph n -> LabelMap (Block n C C)
-graphMap (CmmGraph { g_graph = GMany NothingO blockmap NothingO }) = blockmap
 
 blockLabeled :: NonLocal n => GenCmmGraph n -> Label -> Block n C C
 blockLabeled g lbl =
