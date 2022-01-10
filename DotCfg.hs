@@ -2,9 +2,11 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module DotCfg (
-  dotCFG
-)
+module DotCfg 
+  ( dotCFG
+  , reducibility
+  , Reducibility(..)
+  )
 where
 
 import Prelude hiding ((<>))
@@ -56,10 +58,10 @@ dotCFG nodeTag title (g@CmmGraph { g_graph = GMany NothingO blockmap NothingO, g
         rpnums = gwd_rpnumbering gwd
         rpnum lbl = mapFindWithDefault unreachableRPNum lbl rpnums
 
-        entryviz = case reducibility rpnum dominates blockmap of
+        entryviz = case fastReducibility rpnum dominates blockmap of
                      Reducible -> title
                      Irreducible -> title <> text "\\nIRREDUCIBLE"
-        irrcolor = case reducibility rpnum dominates blockmap of
+        irrcolor = case fastReducibility rpnum dominates blockmap of
                      Reducible -> empty
                      Irreducible -> comma <> space <> text "color=" <>
                                     doubleQuotes (text "red")
@@ -73,13 +75,27 @@ dotCFG nodeTag title (g@CmmGraph { g_graph = GMany NothingO blockmap NothingO, g
 
 
 data Reducibility = Reducible | Irreducible
+  deriving (Eq, Show)
 
-reducibility :: NonLocal node
+reducibility :: (NonLocal node) => GraphWithDominators node -> Reducibility
+reducibility gwd = fastReducibility rpnum dominates (graphMap $ gwd_graph gwd)
+  where rpnums = gwd_rpnumbering gwd
+        rpnum lbl = mapFindWithDefault unreachableRPNum lbl rpnums
+
+        dmap = gwd_dominators gwd
+        dominators lbl = getFact domlattice lbl dmap
+        dominates lbl blockname = lbl == blockname || hasLbl (dominators blockname)
+          where hasLbl AllNodes = False
+                hasLbl EntryNode = False
+                hasLbl (NumberedNode _ l p) = l == lbl || hasLbl p
+                                                 
+
+fastReducibility :: NonLocal node
              => (Label -> RPNum)
              -> (Label -> Label -> Bool)
              -> LabelMap (Block node C C)
              -> Reducibility
-reducibility rpnum dominates blockmap =
+fastReducibility rpnum dominates blockmap =
     if all goodBlock blockmap then Reducible else Irreducible
         where goodBlock b = unreachable b || all (goodEdge (entryLabel b)) (successors b)
               goodEdge from to = rpnum to > rpnum from || to `dominates` from
