@@ -211,6 +211,7 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
             putStrLn $ "  Dominators " ++
                          (if dominatorsPassAllChecks graph then "pass" else "FAIL") ++
                          " lint checks"
+            mapM_ (putStrLn . showSDocUnsafe . ppr) (dominatorsFailures graph)
             putStrLn "   PATHS:"
             let --pprLabel = blockTag . blockLabeled graph 
                 pprLabel = ppr
