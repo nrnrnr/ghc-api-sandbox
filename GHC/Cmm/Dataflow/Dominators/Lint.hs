@@ -1,24 +1,30 @@
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module GHC.Cmm.Dataflow.Dominators.Lint
   ( shortPaths'
 
-  , dominatorsClimb 
+  , dominatorsClimb
 
   , dominatorsByPath
   , dominatorsByAnalysis
   , consistentDominators
 
   , dominatorsPassAllChecks
+  , dominatorsFailures
   )
 where
 
+import GHC.Cmm.Dataflow
 import GHC.Cmm.Dataflow.Block
 import GHC.Cmm.Dataflow.Collections
 import GHC.Cmm.Dataflow.Dominators
 import GHC.Cmm.Dataflow.Graph
 import GHC.Cmm.Dataflow.Label
-import GHC.Cmm 
+import GHC.Cmm
+
+import GHC.Utils.Outputable
+
 
 import GHC.Utils.Panic
 
@@ -73,9 +79,15 @@ dominatorsByAnalysis g = mapMapWithKey domSet (gwd_dominators $ graphWithDominat
 consistentDominators :: NonLocal node => GenCmmGraph node -> Bool
 consistentDominators g = dominatorsByPath g == dominatorsByAnalysis g
 
-
+inconsistentDominators :: NonLocal node => GenCmmGraph node -> [LintFailure]
+inconsistentDominators g =
+   [InconsistentDominators node pdoms adoms
+        | (node, pdoms) <- mapToList (dominatorsByPath g)
+        , let adoms = mapFindWithDefault setEmpty node (dominatorsByAnalysis g)
+        , pdoms /= adoms
+   ]
 dominatorsClimb :: NonLocal node => GenCmmGraph node -> Bool
-dominatorsClimb g = mapAll decreasing (gwd_dominators $ result)
+dominatorsClimb g = mapAll decreasing (gwd_dominators result)
  where result = graphWithDominators g
        rpnum lbl = mapFindWithDefault (panic "missing") lbl (gwd_rpnumbering result)
        decreasing lbl = decreasingFrom (rpnum lbl)
@@ -83,10 +95,75 @@ dominatorsClimb g = mapAll decreasing (gwd_dominators $ result)
        decreasingFrom _ EntryNode = True
        decreasingFrom k (NumberedNode n _ p) = n < k && decreasingFrom n p
 
+{-
+nonClimbingDominators :: NonLocal node => GenCmmGraph node -> [(Label, DominatorSet)]
+nonClimbingDominators g = mapToList $ filter (not . decreasing) $ gwd_dominators result
+ where result = graphWithDominators g
+       rpnum lbl = mapFindWithDefault (panic "missing") lbl (gwd_rpnumbering result)
+       decreasing lbl = decreasingFrom (rpnum lbl)
+       decreasingFrom _ AllNodes = panic "AllNodes"
+       decreasingFrom _ EntryNode = True
+       decreasingFrom k (NumberedNode n _ p) = n < k && decreasingFrom n p
+-}
 
 mapAll :: IsMap m => (KeyOf m -> a -> Bool) -> m a -> Bool
 mapAll goodPair = mapFoldlWithKey (\b k v -> b && goodPair k v) True
 
 
 dominatorsPassAllChecks :: NonLocal node => GenCmmGraph node -> Bool
-dominatorsPassAllChecks g = dominatorsClimb g && consistentDominators g
+dominatorsPassAllChecks g = (dominatorsClimb g || irreducible g) && consistentDominators g
+
+data LintFailure = NonClimbing -- { lf_label :: Label, lf_doms :: DominatorSet }
+                 | InconsistentDominators { lf_node :: Label
+                                          , lf_path_doms :: LabelSet
+                                          , lf_anal_doms :: LabelSet
+                                          }
+  deriving (Show)
+
+instance Outputable LintFailure where
+  ppr NonClimbing = text "<rp numbers do not climb>"
+  ppr (InconsistentDominators node pds ads) =
+      "node" <+> ppr node <+> "dominated by" <+> ppr ads <+> "(analysis)" <+>
+                 "but also" <+> ppr pds <+> "(path enumeration)" $$
+      "node" <+> ppr node <+> "has" <+> ppr (ads `setDifference` pds) <+> "in analysis but not path enumeration" $$
+      "node" <+> ppr node <+> "has" <+> ppr (pds `setDifference` ads) <+> "in path enumeration but not analysis"
+
+irreducible :: NonLocal node => GenCmmGraph node -> Bool
+irreducible g = reducibility (graphWithDominators g) == Irreducible
+
+dominatorsFailures :: NonLocal node => GenCmmGraph node -> [LintFailure]
+dominatorsFailures g =
+    [NonClimbing | reducibility (graphWithDominators g) == Reducible,
+                   not (dominatorsClimb g)] ++
+    inconsistentDominators g
+
+----------------------------------------------------------------
+
+-- copy of code.  Ugh.
+
+data Reducibility = Reducible | Irreducible
+  deriving (Eq, Show)
+
+reducibility :: (NonLocal node) => GraphWithDominators node -> Reducibility
+reducibility gwd = fastReducibility rpnum dominates (graphMap $ gwd_graph gwd)
+  where rpnums = gwd_rpnumbering gwd
+        rpnum lbl = mapFindWithDefault unreachableRPNum lbl rpnums
+
+        dmap = gwd_dominators gwd
+        dominators lbl = getFact domlattice lbl dmap
+        dominates lbl blockname = lbl == blockname || hasLbl (dominators blockname)
+          where hasLbl AllNodes = False
+                hasLbl EntryNode = False
+                hasLbl (NumberedNode _ l p) = l == lbl || hasLbl p
+
+
+fastReducibility :: NonLocal node
+             => (Label -> RPNum)
+             -> (Label -> Label -> Bool)
+             -> LabelMap (Block node C C)
+             -> Reducibility
+fastReducibility rpnum dominates blockmap =
+    if all goodBlock blockmap then Reducible else Irreducible
+        where goodBlock b = unreachable b || all (goodEdge (entryLabel b)) (successors b)
+              goodEdge from to = rpnum to > rpnum from || to `dominates` from
+              unreachable b = rpnum (entryLabel b) == unreachableRPNum
