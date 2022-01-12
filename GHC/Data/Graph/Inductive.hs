@@ -31,7 +31,8 @@ module GHC.Data.Graph.Inductive
     Graph(..),
     DynGraph(..),
     ufold,
-    context
+    context,
+    nodes
   )
 where
 

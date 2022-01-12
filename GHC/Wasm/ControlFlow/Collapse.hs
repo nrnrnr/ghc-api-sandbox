@@ -68,12 +68,37 @@ consumeBy toL fromL g =
 -}
 
 
+singlePred :: Graph gr => gr a b -> Node -> Bool
+singlePred gr n
+    | ([_], _, _, _) <- context gr n = True
+    | otherwise = False
+
 forceMatch :: Graph gr => Node -> gr a b -> (Context a b, gr a b)
 forceMatch node g = case match node g of (Just c, g') -> (c, g')
                                          _ -> panic "missing node"
 
-consumeBy :: DynGraph gr => Node -> Node -> gr Info () -> gr Info ()
+-- | Merge two nodes, return new graph plus list of nodes that newly have a single
+-- predecessor
+consumeBy :: DynGraph gr => Node -> Node -> gr Info () -> (gr Info (), [Node])
 consumeBy toNode fromNode g =
+    assert (toPreds == [((), fromNode)]) $
+    (newGraph, newCandidates)
+  where ((toPreds, _, to, toSuccs), g') = forceMatch toNode g
+        ((fromPreds, _, from, fromSuccs), g'') = forceMatch toNode g'
+        info = from { unsplitLabels = unsplitLabels from `setUnion` unsplitLabels to
+                    , splitLabels   = splitLabels   from `setUnion` splitLabels   to
+                    , rpnumber = rpnumber from `min` rpnumber to
+                    }
+        context = ( fromPreds -- by construction, can't have `toNode`
+                  , fromNode
+                  , info
+                  , delete ((), fromNode) toSuccs `union` fromSuccs
+                  )
+        newGraph = context & g''
+        newCandidates = filter (singlePred newGraph) $ map snd (toSuccs `intersect` fromSuccs)
+
+consumeBy' :: DynGraph gr => Node -> Node -> gr Info () -> gr Info ()
+consumeBy' toNode fromNode g =
     assert (toPreds == [((), fromNode)]) $
     context & g''    
   where ((toPreds, _, to, toSuccs), g') = forceMatch toNode g
@@ -130,11 +155,34 @@ leastSplittable g = node $ minimumBy (compare `on` num) splittable
         about (n, info) = (ps, n, rpnumber info)
           where (ps, _, _, _) = context g n
 
+preds :: Graph gr => gr a b -> Node -> [Node]
+preds g n = map snd ps
+    where (ps, _, _, _) = context g n
+
+singletonGraph :: Graph gr => gr a b -> Bool
+singletonGraph g = case labNodes g of [_] -> True
+                                      _ -> False
+
+
 collapse :: DynGraph gr => gr Info () -> gr Info ()
-collapse g = if hasExactlyOneNode g then g else collapse (next g)
-  where next g = case consumeableEdge g of
-                   Just (u, v) -> consumeBy v u g
-                   Nothing -> split (leastSplittable g) g
+collapse g = drain g worklist
+  where worklist :: [[Node]] -- ^ nodes with exactly one predecessor
+        worklist = [filter (singlePred g) $ nodes g]
+
+        drain g [] = if singletonGraph g then g
+                     else collapse $ split (leastSplittable g) g
+        drain g ([]:nss) = drain g nss
+        drain g ((n:ns):nss) = let (g', ns') = consumeBy n (theUniquePred n) g
+                               in  drain g' (ns':ns:nss)
+           where theUniquePred n
+                     | ([(_, p)], _, _, _) <- context g n = p
+                     | otherwise = panic "node claimed to have a unique predecessor; doesn't"
+                   
+
+
+singleton :: [a] -> Bool
+singleton [_] = True
+singleton _ = False
 
 {- 
 
