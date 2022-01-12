@@ -219,7 +219,7 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
             pprout context $ vcat (map pprPath' $ shortPaths' graph)
             putStrLn "$$$$$$$$$$$$$$ */"
 
-          when False $ do 
+          when True $ do 
             let (results, ios) = unzip $ map analyzeTest $ cmmPathResults graph
             putStrLn "/* <<<<<<<<<<<<<<<<< "
             putStrLn $ "Testing CMM " ++ show (length $ cmmPathResults graph) ++ " path results"
