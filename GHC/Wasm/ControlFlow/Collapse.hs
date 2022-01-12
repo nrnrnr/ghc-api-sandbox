@@ -7,11 +7,14 @@ module GHC.Wasm.ControlFlow.Collapse
 where
 
 import Control.Exception
-
+import GHC.Data.Graph.Inductive
+import GHC.Cmm.Dataflow.Dominators (RPNum)
 
 --import Prelude hiding (succ)
 --
-import Data.Maybe
+import Data.Function hiding ((&))
+import Data.List
+--import Data.Maybe
 --
 --import GHC.Cmm
 --import GHC.Cmm.Dataflow.Block
@@ -23,7 +26,7 @@ import GHC.Cmm.Dataflow.Label
 --
 --import GHC.Platform
 --
---import GHC.Utils.Panic
+import GHC.Utils.Panic
 --import GHC.Utils.Outputable (Outputable, text, (<+>), ppr
 --                            , showSDocUnsafe
 --                            , pprWithCommas
@@ -31,14 +34,9 @@ import GHC.Cmm.Dataflow.Label
 --
 --
 
-data Graph = G { nodeMap :: LabelMap Node
-               , aliases :: LabelMap Label
-               }
-
-data Node = N { preds :: LabelSet
-              , unsplitLabels :: LabelSet
+data Info = I { unsplitLabels :: LabelSet
               , splitLabels :: LabelSet
-              , rpnumber :: Int
+              , rpnumber :: RPNum
               }
 
 mapMinus :: IsMap map => map a -> KeyOf map -> map a
@@ -51,6 +49,7 @@ isSingleton :: IsSet set => set -> Bool
 isSingleton s = case setElems s of [_] -> True
                                    _ -> False
 
+{-
 consumeBy toL fromL g =
   assert (isSingleton $ setMap meaning $ preds to) $
   assert (not $ mapMember toL (aliases g)) $
@@ -66,8 +65,30 @@ consumeBy toL fromL g =
                     }
        nodeMap' = nodeMap g `mapMinus` fromL `mapMinus` toL
        aliases' = mapInsert toL fromL $ aliases g
+-}
 
-consumeBy :: Label -> Label -> Graph -> Graph
+
+forceMatch :: Graph gr => Node -> gr a b -> (Context a b, gr a b)
+forceMatch node g = case match node g of (Just c, g') -> (c, g')
+                                         _ -> panic "missing node"
+
+consumeBy :: DynGraph gr => Node -> Node -> gr Info () -> gr Info ()
+consumeBy toNode fromNode g =
+    assert (toPreds == [((), fromNode)]) $
+    context & g''    
+  where ((toPreds, _, to, toSuccs), g') = forceMatch toNode g
+        ((fromPreds, _, from, fromSuccs), g'') = forceMatch toNode g'
+        info = from { unsplitLabels = unsplitLabels from `setUnion` unsplitLabels to
+                    , splitLabels   = splitLabels   from `setUnion` splitLabels   to
+                    , rpnumber = rpnumber from `min` rpnumber to
+                    }
+        context = ( fromPreds
+                  , fromNode
+                  , info
+                  , delete ((), fromNode) toSuccs ++ fromSuccs
+                  )
+    
+--consumeBy :: Label -> Label -> Graph -> Graph
    -- ^ `consumeBy v u` returns the graph that results when node v is
    -- consumed by node u.  Both v and u are replaced with a new node u' 
    -- with these properties:
@@ -76,22 +97,59 @@ consumeBy :: Label -> Label -> Graph -> Graph
    --    every node that previously points to u now points to u'
    -- 
 
-split :: Label -> Graph -> Graph
-consumeableEdge :: Graph -> Maybe (Label, Label)
-hasExactlyOneNode :: Graph -> Bool
-leastSplittable :: Graph -> Label
+split :: DynGraph gr => Node -> gr Info b -> gr Info b
+split node g = assert (isMultiple preds) $ foldl addReplica g' newNodes
+  where ((preds, _, info, succs), g') = forceMatch node g
+        info' = info { unsplitLabels = setEmpty
+                     , splitLabels = splitLabels info `setUnion` unsplitLabels info
+                     }
+        newNodes = zip preds [maxNode+1..]
+        (_, maxNode) = nodeRange g
+        addReplica g (pred, node) = ([pred], node, info', succs) & g
 
-split = error "unimp"
+                                  
+isMultiple :: [a] -> Bool
+isMultiple [] = False
+isMultiple [_] = False
+isMultiple (_:_:_) = True
+
+consumeableEdge :: Graph gr => gr a b -> Maybe Edge
+hasExactlyOneNode :: Graph gr => gr a b -> Bool
+leastSplittable :: Graph gr => gr Info () -> Node
+
+hasExactlyOneNode g = case labNodes g of [_] -> True
+                                         _ -> False
 consumeableEdge = error "unimp"
-hasExactlyOneNode = error "unimp"
-leastSplittable = error "unimp"
 
+leastSplittable g = node $ minimumBy (compare `on` num) splittable
+  where splittable = filter (isMultiple . preds) $ map about $ labNodes g
+        preds (ps, _, _) = ps
+        num (_, _, rp) = rp
+        node (_, n, _) = n
+        about :: (Node, Info) -> (Adj (), Node, RPNum)
+        about (n, info) = (ps, n, rpnumber info)
+          where (ps, _, _, _) = context g n
 
-collapse :: Graph -> Graph
+collapse :: DynGraph gr => gr Info () -> gr Info ()
 collapse g = if hasExactlyOneNode g then g else collapse (next g)
   where next g = case consumeableEdge g of
                    Just (u, v) -> consumeBy v u g
                    Nothing -> split (leastSplittable g) g
+
+{- 
+
+I've implemented an algorithm on a directed graph that basically goes like this:
+
+  1. Find a node with exactly one predecessor
+  2. Remove that node, transferring its outgoing edges to the unique predecessor
+  3. Repeat until no single-predecessor nodes are left
+
+I'm struggling to think of an efficient way to implement step 1.  Right now I'm using linear search, which makes the cost of the whole algorithm quadratic.  Not good.  I'm quite willing to use an auxiliary data structure, but I haven't been smart enough to think of one that I can update efficiently as nodes are removed and edges are transferred.
+
+Does anybody have any ideas?
+
+-}
+
 
 {-
 

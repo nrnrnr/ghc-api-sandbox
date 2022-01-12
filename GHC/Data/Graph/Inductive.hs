@@ -30,9 +30,12 @@ module GHC.Data.Graph.Inductive
     -- nodes can be easily derived from labNodes, but not vice versa.
     Graph(..),
     DynGraph(..),
-    ufold
+    ufold,
+    context
   )
 where
+
+import Data.Maybe
 
 type Node = Int
 
@@ -128,3 +131,11 @@ class (Graph gr) => DynGraph gr where
 -- | List all 'Node's in the 'Graph'.
 nodes :: (Graph gr) => gr a b -> [Node]
 nodes = map fst . labNodes
+
+
+-- | Find the context for the given 'Node'.  Causes an error if the 'Node' is
+-- not present in the 'Graph'.
+context :: (Graph gr) => gr a b -> Node -> Context a b
+context g v = fromMaybe (error ("Match Exception, Node: "++show v))
+                        (fst (match v g))
+
