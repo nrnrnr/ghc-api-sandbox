@@ -71,9 +71,8 @@ dominatorsByPath g = foldl addPath mapEmpty (shortPaths' g)
 dominatorsByAnalysis :: NonLocal node => GenCmmGraph node -> LabelMap LabelSet
 dominatorsByAnalysis g = mapMapWithKey domSet (gwd_dominators $ graphWithDominators g)
   where domSet lbl = collapse (setSingleton lbl)
-        collapse _ AllNodes = panic "allnodes in dom set"
         collapse lbls EntryNode = lbls
-        collapse lbls (NumberedNode _ l p) = collapse (setInsert l lbls) p
+        collapse lbls (ImmediateDominator l p) = collapse (setInsert l lbls) p
 
 
 consistentDominators :: NonLocal node => GenCmmGraph node -> Bool
@@ -91,10 +90,9 @@ dominatorsClimb g = mapAll decreasing (gwd_dominators result)
  where result = graphWithDominators g
        rpnum lbl = mapFindWithDefault (panic "missing") lbl (gwd_rpnumbering result)
        decreasing lbl = decreasingFrom (rpnum lbl)
-       decreasingFrom _ AllNodes = panic "AllNodes"
        decreasingFrom _ EntryNode = True
-       decreasingFrom k (NumberedNode n _ p) = n < k && decreasingFrom n p
-
+       decreasingFrom k (ImmediateDominator lbl p) = n < k && decreasingFrom n p
+           where n = rpnum lbl
 {-
 nonClimbingDominators :: NonLocal node => GenCmmGraph node -> [(Label, DominatorSet)]
 nonClimbingDominators g = mapToList $ filter (not . decreasing) $ gwd_dominators result
@@ -150,11 +148,10 @@ reducibility gwd = fastReducibility rpnum dominates (graphMap $ gwd_graph gwd)
         rpnum lbl = mapFindWithDefault unreachableRPNum lbl rpnums
 
         dmap = gwd_dominators gwd
-        dominators lbl = getFact domlattice lbl dmap
+        dominators lbl = mapFindWithDefault (panic "no dominator") lbl dmap
         dominates lbl blockname = lbl == blockname || hasLbl (dominators blockname)
-          where hasLbl AllNodes = False
-                hasLbl EntryNode = False
-                hasLbl (NumberedNode _ l p) = l == lbl || hasLbl p
+          where hasLbl EntryNode = False
+                hasLbl (ImmediateDominator l p) = l == lbl || hasLbl p
 
 
 fastReducibility :: NonLocal node

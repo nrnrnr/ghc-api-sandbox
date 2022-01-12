@@ -20,6 +20,7 @@ import GHC.Cmm.Dataflow.Collections
 import GHC.Cmm.Dataflow.Graph
 import GHC.Cmm.Dataflow.Label
 import GHC.Utils.Outputable
+import GHC.Utils.Panic
 
 
 
@@ -45,11 +46,11 @@ dotCFG nodeTag title (g@CmmGraph { g_graph = GMany NothingO blockmap NothingO, g
         gwd = graphWithDominators g
         dmap :: LabelMap DominatorSet
         dmap = gwd_dominators gwd
-        dominators lbl = getFact domlattice lbl dmap
+        dominators lbl = mapLookup lbl dmap
         dominates lbl blockname = lbl == blockname || hasLbl (dominators blockname)
-          where hasLbl AllNodes = False
-                hasLbl EntryNode = False
-                hasLbl (NumberedNode _ l p) = l == lbl || hasLbl p
+          where hasLbl (Just EntryNode) = False
+                hasLbl (Just (ImmediateDominator l p)) = l == lbl || hasLbl (Just p)
+                hasLbl Nothing = False
         headers :: LabelSet
         headers = foldMap headersPointedTo blockmap
         headersPointedTo block =
@@ -65,12 +66,14 @@ dotCFG nodeTag title (g@CmmGraph { g_graph = GMany NothingO blockmap NothingO, g
                      Reducible -> empty
                      Irreducible -> comma <> space <> text "color=" <>
                                     doubleQuotes (text "red")
-        exitViz = text "exit:" <> space <> dotDominators exitDominators
+        exitViz = text "exit:" <+> dotDominators (Just exitDominators)
         exitNodeLabels :: [Label]
         exitNodeLabels =
             foldMap (\n -> if null (successors n) then [entryLabel n] else []) blockmap
-        exitDominators =
-            foldMap (\lbl -> NumberedNode (rpnum lbl) lbl (dominators lbl)) exitNodeLabels
+        exitDominators = foldl1 intersectDominatorsSlow $ map addDoms exitNodeLabels
+            where addDoms lbl = ImmediateDominator lbl $
+                                case dominators lbl of Nothing -> EntryNode
+                                                       Just doms -> doms
         exitEdges = vcat [dotName from <> text "-> exit;" | from <- exitNodeLabels]
 
 
@@ -83,11 +86,10 @@ reducibility gwd = fastReducibility rpnum dominates (graphMap $ gwd_graph gwd)
         rpnum lbl = mapFindWithDefault unreachableRPNum lbl rpnums
 
         dmap = gwd_dominators gwd
-        dominators lbl = getFact domlattice lbl dmap
+        dominators lbl = mapFindWithDefault (panic ("reducibility: no dominator for " ++ showPprUnsafe lbl)) lbl dmap
         dominates lbl blockname = lbl == blockname || hasLbl (dominators blockname)
-          where hasLbl AllNodes = False
-                hasLbl EntryNode = False
-                hasLbl (NumberedNode _ l p) = l == lbl || hasLbl p
+          where hasLbl EntryNode = False
+                hasLbl (ImmediateDominator l p) = l == lbl || hasLbl p
                                                  
 
 fastReducibility :: NonLocal node
@@ -106,17 +108,17 @@ dotNode display headers rpnum dmap (label, a) =
   text "[label=" <> doubleQuotes (display a) <> headermark <> text "]"
                 <> text ";"
   where _dotlabel = ppr label <> text "(" <> ppr nodenum <>
-                    text "): " <> dotDominators (getFact domlattice label dmap)
+                    text "): " <> dotDominators (mapLookup label dmap)
         nodenum = rpnum label
         headermark = if setMember label headers then
                          space <> text "peripheries=2"
                      else
                          empty
 
-dotDominators :: DominatorSet -> SDoc
-dotDominators EntryNode = text "<entry>"
-dotDominators AllNodes = text "<all>"
-dotDominators (NumberedNode n _ parent) = ppr n <> text " -> " <> dotDominators parent
+dotDominators :: Maybe DominatorSet -> SDoc
+dotDominators (Just EntryNode) = text "<entry>"
+dotDominators (Just (ImmediateDominator lbl parent)) = ppr lbl <> text " -> " <> dotDominators (Just parent)
+dotDominators Nothing = text "<unreachable?>"
 
 
 dotEdge :: (Label -> RPNum) -> (Label, Label) -> SDoc

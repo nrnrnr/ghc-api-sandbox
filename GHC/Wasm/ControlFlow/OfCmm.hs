@@ -239,17 +239,16 @@ structuredControl platform txExpr txBlock g =
                lbl (gwd_rpnumbering gwd)
    (idominatees, dominates) = (idominatees, dominates)
        where addToDominatees ds label rpnum =
-               case idom label of
+               case fromJust $ idom label of
                  EntryNode -> ds
-                 AllNodes -> panic "AllNodes appears as dominator"
-                 NumberedNode { ds_label = dominator } ->
+                 ImmediateDominator { ds_label = dominator } ->
                      addToList (addDominatee label rpnum) dominator ds
 
              dominatees :: LabelMap Dominatees
              dominatees = mapFoldlWithKey addToDominatees mapEmpty (gwd_rpnumbering gwd)
 
-             idom :: Label -> DominatorSet -- immediate dominator
-             idom lbl = mapFindWithDefault AllNodes lbl (gwd_dominators gwd)
+             idom :: Label -> Maybe DominatorSet -- immediate dominator
+             idom lbl = mapLookup lbl (gwd_dominators gwd)
 
              idominatees lbl =
                  map (blockLabeled . fst) $ mapFindWithDefault [] lbl dominatees
@@ -262,7 +261,9 @@ structuredControl platform txExpr txBlock g =
                  | otherwise = (l', rpnum') : addDominatee l rpnum pairs
 
              dominates lbl blockname =
-                 lbl == blockname || dominatorsMember lbl (idom blockname)
+                 lbl == blockname ||
+                 case idom blockname of Nothing -> False
+                                        Just doms -> dominatorsMember lbl doms
 
    isBackward from to = rpnum to <= rpnum from -- self-edge counts as a backward edge
 

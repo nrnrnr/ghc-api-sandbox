@@ -9,6 +9,7 @@ module GHC.Cmm.Dataflow.Dominators
   , RPNum
   , unreachableRPNum
   , intersectDomSet
+  , intersectDominatorsSlow
   , graphWithDominators
   , graphWithDominators'
   , domlattice
@@ -46,14 +47,26 @@ trace _ a = a
 -- E. Tarjan, Spyridon Triantafyllis, and David I. August (January 2006).  "Finding
 -- Dominators in Practice."  Journal of Graph Algorithms and Applications 10(1):69-94.
 
-data DominatorSet = NumberedNode { ds_revpostnum :: RPNum
-                                 , ds_label  :: Label
-                                 , ds_parent :: DominatorSet
+data DominatorSet = ImmediateDominator { ds_label  :: Label
+                                       , ds_parent :: DominatorSet
+                                       }
+                  | EntryNode
+  deriving (Eq)
+
+type DominatorSet' = LegacyDominatorSet
+data LegacyDominatorSet = NumberedNode' { _ds_revpostnum' :: RPNum
+                                        , ds_label'  :: Label
+                                        , ds_parent' :: LegacyDominatorSet
                                     -- invariant: parent is never AllNodes
                                  }
-                  | EntryNode
-                  | AllNodes -- equivalent of paper's Undefined
+                  | EntryNode'
+                  | AllNodes' -- equivalent of paper's Undefined
   deriving (Eq)
+
+unLegacy :: LegacyDominatorSet -> DominatorSet
+unLegacy EntryNode' = EntryNode
+unLegacy NumberedNode' { ds_label' = l, ds_parent' = p } = ImmediateDominator l (unLegacy p)
+unLegacy AllNodes' = panic "GHC.Cmm.Dataflow.Dominators: undefined dominator"
 
 -- | Reverse postorder number of a node in a CFG
 newtype RPNum = RPNum Int
@@ -66,8 +79,7 @@ dominatorsMember :: Label -> DominatorSet -> Bool
 -- dominator set.  Which is to say, does the bloc
 -- with with given label _properly_ and _non-vacuously_
 -- dominate the node whose dominator set this is?
-dominatorsMember lbl (NumberedNode _ l p) = l == lbl || dominatorsMember lbl p
-dominatorsMember _   AllNodes  = False -- ^ see Note [Dominator Membership]
+dominatorsMember lbl (ImmediateDominator l p) = l == lbl || dominatorsMember lbl p
 dominatorsMember _   EntryNode = False
 
 
@@ -89,13 +101,13 @@ but a `DominatorSet` contains only the *proper* dominators.
 
 
 -- | `Monoid` instance; the operation is intersection.
-instance Semigroup DominatorSet where
+instance Semigroup LegacyDominatorSet where
     d <> d' = getJoined (intersectDomSet (OldFact d) (NewFact d'))
       where getJoined (Changed a) = a
             getJoined (NotChanged a) = a
 
-instance Monoid DominatorSet where
-    mempty = AllNodes
+instance Monoid LegacyDominatorSet where
+    mempty = AllNodes'
 
 
 
@@ -109,25 +121,25 @@ instance Monoid DominatorSet where
 
 -- | Intersection of dominator sets
 
-intersectDomSet :: OldFact DominatorSet
-                -> NewFact DominatorSet
-                -> JoinedFact DominatorSet
+intersectDomSet :: OldFact DominatorSet'
+                -> NewFact DominatorSet'
+                -> JoinedFact DominatorSet'
 intersectDomSet (OldFact old) (NewFact new) = let answer = intersectDomSet' NotChanged (OldFact old) (NewFact new)
                           in  (trace $ showSDocUnsafe (ppr old <+> text "`inter`" <+> ppr new <+> text "==" <+> ppr (strip answer)))  answer
  where
-  intersectDomSet' :: (DominatorSet -> JoinedFact DominatorSet)
-                   -> OldFact DominatorSet
-                   -> NewFact DominatorSet
-                   -> JoinedFact DominatorSet
-  intersectDomSet' nc (OldFact EntryNode) (NewFact _)         = nc EntryNode
-  intersectDomSet' _  (OldFact _)         (NewFact EntryNode) = Changed EntryNode
-  intersectDomSet' nc (OldFact a)         (NewFact AllNodes)  = nc a
-  intersectDomSet' _  (OldFact AllNodes)  (NewFact a)         = Changed a
-  intersectDomSet' nc ofct@(OldFact (NumberedNode old ol op))
-                      nfct@(NewFact (NumberedNode new _  np))
+  intersectDomSet' :: (DominatorSet' -> JoinedFact DominatorSet')
+                   -> OldFact DominatorSet'
+                   -> NewFact DominatorSet'
+                   -> JoinedFact DominatorSet'
+  intersectDomSet' nc (OldFact EntryNode') (NewFact _)         = nc EntryNode'
+  intersectDomSet' _  (OldFact _)         (NewFact EntryNode') = Changed EntryNode'
+  intersectDomSet' nc (OldFact a)         (NewFact AllNodes')  = nc a
+  intersectDomSet' _  (OldFact AllNodes')  (NewFact a)         = Changed a
+  intersectDomSet' nc ofct@(OldFact (NumberedNode' old ol op))
+                      nfct@(NewFact (NumberedNode' new _  np))
     | old < new = intersectDomSet' nc ofct (NewFact np)
     | old > new = intersectDomSet' Changed (OldFact op) nfct
-    | otherwise = NumberedNode old ol <$> intersectDomSet' nc (OldFact op) (NewFact np)
+    | otherwise = NumberedNode' old ol <$> intersectDomSet' nc (OldFact op) (NewFact np)
 
 -- In the mutable version, the `otherwise` case just returns the old dominator
 -- set.  If we could prove that this computation produced the correct _immediate_
@@ -147,8 +159,8 @@ strip (NotChanged a) = a
 -- The code below uses Cmm.Dataflow (Hoopl) to calculate
 -- the dominators of each node.  
 
-domlattice :: DataflowLattice DominatorSet
-domlattice = DataflowLattice AllNodes intersectDomSet
+domlattice :: DataflowLattice DominatorSet'
+domlattice = DataflowLattice AllNodes' intersectDomSet
 
 data GraphWithDominators node =
     GraphWithDominators { gwd_graph :: GenCmmGraph node
@@ -167,15 +179,15 @@ graphWithDominators, graphWithDominators', graphWithDominators''
 -- XXX question for reviewer: should the graph returned be the original graph 
 -- or a new graph containing only the reachable nodes?
 
-graphWithDominators' g = GraphWithDominators g dmap rpmap
+graphWithDominators' g = GraphWithDominators g (fmap unLegacy dmap) rpmap
       where dmap = analyzeCmmFwd domlattice transfer g startFacts
 
-            startFacts = mkFactBase domlattice [(g_entry g, EntryNode)]
+            startFacts = mkFactBase domlattice [(g_entry g, EntryNode')]
             transfer block facts =
                 asBase [(successor, outgoing) | successor <- successors block]
              where asBase = mkFactBase domlattice
                    incoming = getFact domlattice (entryLabel block) facts
-                   outgoing = NumberedNode (nodenum block) (entryLabel block) incoming
+                   outgoing = NumberedNode' (nodenum block) (entryLabel block) incoming
 
             rpmap :: LabelMap RPNum
             rpmap = mapFromList $ zipWith kvpair rpblocks [0..]
@@ -216,10 +228,14 @@ instance Outputable RPNum where
    -- using `(<>)` would conflict with Semigroup
 
 
+instance Outputable LegacyDominatorSet where
+  ppr EntryNode' = text "entry"
+  ppr (NumberedNode' n l parent) = hcat[ppr l, parens (ppr n)] <+> text "->" <+> ppr parent
+  ppr AllNodes' = text "<all-nodes>"
+
 instance Outputable DominatorSet where
   ppr EntryNode = text "entry"
-  ppr (NumberedNode n l parent) = hcat[ppr l, parens (ppr n)] <+> text "->" <+> ppr parent
-  ppr AllNodes = text "<all-nodes>"
+  ppr (ImmediateDominator l parent) = ppr l <+> text "->" <+> ppr parent
 
 
 ----------------------------------------------------------------
@@ -291,7 +307,7 @@ graphWithDominators'' g = GraphWithDominators g dmap rpmap
                          trace "first array" $ 
                          listArray nonentryBounds $ map (IDom . aPred) [1..]
             domSet 0 = EntryNode
-            domSet i = NumberedNode (RPNum d) (rplabels ! d) (doms ! d)
+            domSet i = ImmediateDominator (rplabels ! d) (doms ! d)
                 where IDom d = idom_array ! i
             doms = tabulate bounds domSet
                            
@@ -350,3 +366,13 @@ checkClimbing (lo, hi) a
             -- ^ reverse postorder number of each node
             nodenum block = mapFindWithDefault unreachableRPNum (entryLabel block) rpmap
 -}
+
+
+intersectDominatorsSlow :: DominatorSet -> DominatorSet -> DominatorSet
+intersectDominatorsSlow ds ds' = commonPrefix (revDoms ds []) (revDoms ds' []) EntryNode
+  where revDoms EntryNode prev = prev
+        revDoms (ImmediateDominator lbl doms) prev = revDoms doms (lbl:prev)
+        commonPrefix (a:as) (b:bs) doms
+            | a == b = commonPrefix as bs (ImmediateDominator a doms)
+        commonPrefix _ _ doms = doms
+
