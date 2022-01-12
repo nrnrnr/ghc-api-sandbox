@@ -230,8 +230,8 @@ iterateFun :: (Eq a) => (a -> a) -> (a -> a)
 iterateFun f a = if a' == a then a else trace "take a step" $ iterateFun f a'
     where a' = f a
 
-tabulate :: (Ix i, Enum i) => (i, i) -> (i -> e) -> Array i e
-tabulate (lo, hi) f = listArray (lo, hi) $ map f [lo..hi]
+tabulate :: (Ix i) => (i, i) -> (i -> e) -> Array i e
+tabulate b f = listArray b $ map f $ range b
 
 
 newtype IDom = IDom { unIDom :: Int }
