@@ -51,14 +51,26 @@ exits b =
           let (lo, hi) = switchTargetsRange targets
               dests = switchTargetsCases targets
               other = switchTargetsDefault targets
+              caseExit (j, lbl) = (Just $ Switch blabel (lo, hi + 1) j, lbl)
+              defaultExits = case other of
+                               Nothing -> []
+                               Just lbl -> [(Just $ Switch blabel (lo, hi + 1) defarg, lbl)]
+              defarg = try lo
+                  where try i | i == hi = i
+                              | i `elem` caseArgs = try (i + 1)
+                              | otherwise = i
+                        caseArgs = map fst dests
               labelOf i = case [lbl | (j, lbl) <- dests, j == i]
                           of [lbl] -> lbl
                              [] -> case other of
                                      Just lbl -> lbl
                                      Nothing -> panic "GHC.Tests.CmmPaths.exit: no default"
                              (_ : _ : _) -> panic "GHC.Tests.CmmPaths.exit: too many matches"
-          in  [(Just $ Switch blabel (lo, hi + 1) i, labelOf i) | i <- [lo..hi]]
-
+          in  if hi - lo < 10 then
+                [(Just $ Switch blabel (lo, hi + 1) i, labelOf i) | i <- [lo..hi]]
+              else
+                  -- as some switch statements go from minBound :: Int to maxBound :: Int
+                defaultExits ++ map caseExit dests
           
       CmmCall { cml_cont = Just l } -> [(Nothing, l)]
       CmmCall { cml_cont = Nothing } -> []
