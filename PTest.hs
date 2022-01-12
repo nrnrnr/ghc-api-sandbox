@@ -63,7 +63,7 @@ import GHC.Cmm.Ppr()
 import qualified GHC.LanguageExtensions as LangExt
 
 import System.Environment ( getArgs )
-import System.IO (stdout, stderr, hPutStrLn)
+import System.IO (stdout, stderr, hPutStrLn, hFlush)
 
 --import GHC.Wasm.ControlFlow
 import GHC.Wasm.Ppr.Control()
@@ -205,6 +205,7 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
                 code = structuredControl platform (\_ -> id) (\_ -> pprCode) graph
             pprout context $ pdoc platform code
             putStrLn "============== */"
+            hFlush stdout
 
           when True $ do
             putStrLn "/* $$$$$$$$$$$$$ "
@@ -218,6 +219,7 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
                 pprPath' lbls = hcat $ intersperse (text " -> ") (map pprLabel (reverse lbls))
             pprout context $ vcat (map pprPath' $ shortPaths' graph)
             putStrLn "$$$$$$$$$$$$$$ */"
+            hFlush stdout
 
           when True $ do 
             let (results, ios) = unzip $ map analyzeTest $ cmmPathResults graph
@@ -226,6 +228,7 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
             putStrLn $ "CMM:  " ++ resultReport results
             sequence_ ios
             putStrLn "   >>>>>>>>>>>>>>>>> */ "
+            hFlush stdout
 
           when (True && r == Reducible) $ do 
             let (results, ios) = unzip $ map analyzeTest $ wasmPathResults platform graph
@@ -234,6 +237,7 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
             putStrLn $ "Wasm: " ++ resultReport results
             sequence_ ios
             putStrLn "   |||||||||||||||||| */ "
+            hFlush stdout
 
           when (True && r == Reducible) $ do
             putStrLn "/* Peephole: @@@@@@@@@@@@@@@@@@@@ "
@@ -242,6 +246,7 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
                        structuredControl platform (\_ -> id) (\_ -> pprCode) graph
             pprout context $ pdoc platform code
             putStrLn "@@@@@@@@@@@@@@@@@@@ */"
+            hFlush stdout
 
 
 
@@ -252,6 +257,7 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
             putStrLn $ "Peep: " ++ resultReport results
             sequence_ ios
             putStrLn "   ##################### */ "
+            hFlush stdout
 
         resultReport results =
             if good == total then "All " ++ show total ++ " results are good"
