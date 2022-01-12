@@ -30,13 +30,14 @@ data Event = Predicate Label Bool
            | Action Label
   deriving (Eq)
 
-instance Show Event where
-  show (Action l) = labelString l
-  show (Predicate l b) = labelString l ++ "(" ++ (if b then "T" else "F") ++ ")"
-  show (Switch l (lo,hi) i) =  labelString l ++ "(" ++ show i ++ " in [" ++ show lo ++ "," ++ show hi ++ "])"
+instance Outputable Event where
+  ppr = text . show
 
-labelString :: Label -> String
-labelString = showSDocUnsafe . ppr
+instance Show Event where
+  show (Action l) = showPprUnsafe l
+  show (Predicate l b) = showPprUnsafe l ++ "(" ++ (if b then "T" else "F") ++ ")"
+  show (Switch l (lo,hi) i) =  showPprUnsafe l ++ "(" ++ show i ++ " in [" ++ show lo ++ ".." ++ show hi ++ "])"
+
 
 traceBits :: [Event] -> [Bool]
 traceBits (Predicate _ b : events) = b : traceBits events
