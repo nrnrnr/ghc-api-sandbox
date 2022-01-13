@@ -11,7 +11,7 @@ module GHC.Wasm.Paper
   )
 where
 
-import Data.Void
+--import Data.Void
 
 --import Debug.Trace
 
@@ -39,14 +39,11 @@ data WasmControl s where
   -- It might be instantiated with an open Cmm block or with a sequence
   -- of Wasm instructions.
 
-  WasmNop :: WasmControl s
-
   WasmBlock :: WasmControl s -> WasmControl s
   WasmLoop  :: WasmControl s -> WasmControl s
   WasmIf    :: s -> WasmControl s -> WasmControl s -> WasmControl s
 
   WasmBr   :: Int -> WasmControl s
-  WasmBrIf :: s -> Int -> WasmControl s
   WasmBrTable :: s
               -> BrTableInterval -- for debugging only
               -> [Int]
@@ -58,10 +55,6 @@ data WasmControl s where
 
   WasmSlc :: s -> WasmControl s   -- straight-line code
   WasmSeq :: WasmControl s -> WasmControl s -> WasmControl s
-
-  WasmLabel :: Void -> WasmControl s -- pure sanity-checking play
-
-  WasmUnreachable :: WasmControl s
 
 
 data BrTableInterval
@@ -83,12 +76,12 @@ pattern WasmExit     i = WasmBr i
 pattern WasmContinue i = WasmBr i
 
 instance Semigroup (WasmControl s) where
-  (<>) WasmNop a = a
-  (<>) a WasmNop = a
+--  (<>) WasmNop a = a
+--  (<>) a WasmNop = a
   (<>) a b = WasmSeq a b
 
-instance Monoid (WasmControl s) where
-  mempty = WasmNop
+--instance Monoid (WasmControl s) where
+--  mempty = WasmNop
 
 --labelAs :: Labeled a -> b -> Labeled b
 --labelAs la b = fmap (const b) la
