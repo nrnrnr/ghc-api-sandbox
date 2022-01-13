@@ -55,16 +55,14 @@ data ContainingSyntax
 type Context = [ContainingSyntax]
 
 -- | Convert a Cmm CFG to structured control flow expressed as
--- a `WasmStmt`.
+-- a `WasmControl`.
 
-structuredControl :: forall e s .
-                     Platform  -- ^ needed for offset calculation
-                  -> (Label -> CmmExpr -> e) -- ^ translator for expressions
+structuredControl :: forall s .
+                     (Label -> CmmExpr -> s) -- ^ translator for expressions
                   -> (Label -> Block CmmNode O O -> s) -- ^ translator for straight-line code
                   -> CmmGraph -- ^ CFG to be translated
-                  -> WasmStmt s e
-structuredControl platform txExpr txBlock g =
-   doBlock (blockLabeled (g_entry g)) []
+                  -> WasmControl s
+structuredControl txExpr txBlock g = doBlock (blockLabeled (g_entry g)) []
  where
    -- Tragic fact: To Cmm, a "block" is a basic block, but to Wasm,
    -- a "block" is a structured control-flow construct akin
@@ -82,9 +80,9 @@ structuredControl platform txExpr txBlock g =
    -- And `doBranch` implements a control transfer, which may be
    -- implemented by falling through or by a `br` instruction.
 
-   doBlock  :: CmmBlock               -> Context -> WasmStmt s e
-   doExits  :: CmmBlock -> [CmmBlock] -> Context -> WasmStmt s e
-   doBranch :: Label -> Label         -> Context -> WasmStmt s e
+   doBlock  :: CmmBlock               -> Context -> WasmControl s
+   doExits  :: CmmBlock -> [CmmBlock] -> Context -> WasmControl s
+   doBranch :: Label -> Label         -> Context -> WasmControl s
 
    doBlock x context = 
        if isHeader xlabel then
@@ -109,7 +107,7 @@ structuredControl platform txExpr txBlock g =
      -- (In Peterson, emitBlockX combines case 1 step 6, case 2 step 1, case 2 step 3)
      where emitBlockX context =
              codeBody xlabel x <>
-             case flowLeaving platform x of
+             case flowLeaving genericPlatform x of
                Unconditional l -> doBranch xlabel l context -- Peterson: case 1 step 6
                Conditional e t f -> -- Peterson: case 1 step 5
                  WasmIf
@@ -161,7 +159,7 @@ structuredControl platform txExpr txBlock g =
      -- ^ Domination relation (not just immediate domination)
 
    -- | Translate straightline code, which is uninterpreted except by `txBlock`.
-   codeBody :: Label -> Block CmmNode C C -> WasmStmt s e
+   codeBody :: Label -> Block CmmNode C C -> WasmControl s
    codeBody lbl (BlockCC _first middle _last) = WasmSlc (txBlock lbl middle)
 
 

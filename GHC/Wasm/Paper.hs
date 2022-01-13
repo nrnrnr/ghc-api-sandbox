@@ -4,7 +4,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module GHC.Wasm.Paper
-  ( WasmStmt(..)
+  ( WasmControl(..)
   , BrTableInterval(..), inclusiveInterval
   , pattern WasmExit, pattern WasmContinue
 
@@ -34,39 +34,34 @@ import GHC.Utils.Panic
 -- an inference algorithm over the code.
 
 
-data WasmStmt s e where
+data WasmControl s where
   -- ^ Type parameter `s` is the type of (unspecified) statements.
   -- It might be instantiated with an open Cmm block or with a sequence
   -- of Wasm instructions.
-  --
-  -- Type parameter `e` is the type of conditional expressions.
-  -- It might be instantiated with a Cmm expression or with a
-  -- sequence of Wasm instructions that would leave a value of
-  -- interest on top of the stack.
 
-  WasmNop :: WasmStmt s e
+  WasmNop :: WasmControl s
 
-  WasmBlock :: WasmStmt s e -> WasmStmt s e
-  WasmLoop  :: WasmStmt s e -> WasmStmt s e
-  WasmIf    :: e -> WasmStmt s e -> WasmStmt s e -> WasmStmt s e
+  WasmBlock :: WasmControl s -> WasmControl s
+  WasmLoop  :: WasmControl s -> WasmControl s
+  WasmIf    :: s -> WasmControl s -> WasmControl s -> WasmControl s
 
-  WasmBr   :: Int -> WasmStmt s e
-  WasmBrIf :: e -> Int -> WasmStmt s e
-  WasmBrTable :: e
+  WasmBr   :: Int -> WasmControl s
+  WasmBrIf :: s -> Int -> WasmControl s
+  WasmBrTable :: s
               -> BrTableInterval -- for debugging only
               -> [Int]
               -> Int
-              -> WasmStmt s e
+              -> WasmControl s
               -- invariant: the table interval is contained
               -- within [0 .. pred (length targets)]
-  WasmReturn :: WasmStmt s e
+  WasmReturn :: WasmControl s
 
-  WasmSlc :: s -> WasmStmt s e   -- straight-line code
-  WasmSeq :: WasmStmt s e -> WasmStmt s e -> WasmStmt s e
+  WasmSlc :: s -> WasmControl s   -- straight-line code
+  WasmSeq :: WasmControl s -> WasmControl s -> WasmControl s
 
-  WasmLabel :: Void -> WasmStmt s e -- pure sanity-checking play
+  WasmLabel :: Void -> WasmControl s -- pure sanity-checking play
 
-  WasmUnreachable :: WasmStmt s e
+  WasmUnreachable :: WasmControl s
 
 
 data BrTableInterval
@@ -81,18 +76,18 @@ inclusiveInterval lo hi
     | lo <= hi = BrTableInterval lo (hi - lo + 1)
     | otherwise = panic "GHC.Wasm.ControlFlow: empty interval"
 
-pattern WasmExit :: Int -> WasmStmt s e
-pattern WasmContinue :: Int -> WasmStmt s e
+pattern WasmExit :: Int -> WasmControl s
+pattern WasmContinue :: Int -> WasmControl s
 
 pattern WasmExit     i = WasmBr i
 pattern WasmContinue i = WasmBr i
 
-instance Semigroup (WasmStmt s e) where
+instance Semigroup (WasmControl s) where
   (<>) WasmNop a = a
   (<>) a WasmNop = a
   (<>) a b = WasmSeq a b
 
-instance Monoid (WasmStmt s e) where
+instance Monoid (WasmControl s) where
   mempty = WasmNop
 
 --labelAs :: Labeled a -> b -> Labeled b
