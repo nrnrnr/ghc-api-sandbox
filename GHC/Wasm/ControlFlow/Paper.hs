@@ -62,13 +62,13 @@ structuredControl :: forall s .
                   -> (Label -> Block CmmNode O O -> s) -- ^ translator for straight-line code
                   -> CmmGraph -- ^ CFG to be translated
                   -> WasmControl s
-structuredControl txExpr txBlock g = doBlock (blockLabeled (g_entry g)) []
+structuredControl txExpr txBlock g = doNode (blockLabeled (g_entry g)) []
  where
    -- Tragic fact: To Cmm, a "block" is a basic block, but to Wasm,
    -- a "block" is a structured control-flow construct akin
    -- to Pascal's `begin... end`.
 
-   -- | `doBlock` basically handles Peterson's case 1: it emits code 
+   -- | `doNode` basically handles Peterson's case 1: it emits code 
    -- from the block to the nearest merge node that the block dominates.
    --
    -- `doExits` takes the merge nodes that the block dominates, which are
@@ -80,11 +80,11 @@ structuredControl txExpr txBlock g = doBlock (blockLabeled (g_entry g)) []
    -- And `doBranch` implements a control transfer, which may be
    -- implemented by falling through or by a `br` instruction.
 
-   doBlock  :: CmmBlock               -> Context -> WasmControl s
+   doNode  :: CmmBlock               -> Context -> WasmControl s
    doExits  :: CmmBlock -> [CmmBlock] -> Context -> WasmControl s
    doBranch :: Label -> Label         -> Context -> WasmControl s
 
-   doBlock x context = 
+   doNode x context = 
        if isHeader xlabel then
            WasmLoop (emitBlockX (LoopHeadedBy xlabel : context))
        else
@@ -98,7 +98,7 @@ structuredControl txExpr txBlock g = doBlock (blockLabeled (g_entry g)) []
 
    doExits x (y:ys) context =
        WasmBlock (doExits x ys (BlockFollowedBy ylabel : context)) <>
-       doBlock y context
+       doNode y context
      where ylabel = entryLabel y
    doExits x [] context =
        -- trace ("Block " ++ showSDocUnsafe (ppr xlabel) ++ headerStatus ++ " in context " ++ showSDocUnsafe (ppr context)) $
@@ -135,7 +135,7 @@ structuredControl txExpr txBlock g = doBlock (blockLabeled (g_entry g)) []
       | isBackward from to = WasmBr i -- continue
            -- Peterson: case 1 step 4
       | isMergeLabel to = WasmBr i -- exit
-      | otherwise = doBlock (blockLabeled to) context
+      | otherwise = doNode (blockLabeled to) context
      where i = index' to context
 
    ---- everything else here is utility functions
@@ -160,7 +160,7 @@ structuredControl txExpr txBlock g = doBlock (blockLabeled (g_entry g)) []
 
    -- | Translate straightline code, which is uninterpreted except by `txBlock`.
    codeBody :: Label -> Block CmmNode C C -> WasmControl s
-   codeBody lbl (BlockCC _first middle _last) = WasmSlc (txBlock lbl middle)
+   codeBody lbl block = WasmSlc (txBlock lbl (nodeBody block))
 
 
 
@@ -345,3 +345,6 @@ stackHas frames lbl = any (matches lbl) frames
            matches label (LoopHeadedBy l) = label == l
            matches _ _ = False
 
+
+nodeBody :: Block n C C -> Block n O O
+nodeBody (BlockCC _first middle _last) = middle
