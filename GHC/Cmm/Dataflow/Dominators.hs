@@ -2,6 +2,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE RankNTypes #-}
 
 module GHC.Cmm.Dataflow.Dominators
   ( DominatorSet(..)
@@ -21,7 +22,9 @@ module GHC.Cmm.Dataflow.Dominators
   )
 where
 
-import Data.Array
+import Data.Array.IArray
+import Data.Array.ST
+import Data.Array.Unboxed (UArray)
 
 import GHC.Cmm.Dataflow
 import GHC.Cmm.Dataflow.Block
@@ -32,6 +35,7 @@ import GHC.Cmm
 
 import GHC.Utils.Outputable(Outputable(..), text, int, hcat, (<+>), parens, showSDocUnsafe)
 import GHC.Utils.Panic
+import Control.Monad.ST
 --import Debug.Trace
 
 trace :: String -> a -> a
@@ -170,7 +174,7 @@ data GraphWithDominators node =
   -- ^ Dominators and RP numberings include only *reachable* blocks.
 
 
-graphWithDominators, graphWithDominators', graphWithDominators''
+graphWithDominators, graphWithDominators', graphWithDominators'', graphWithDominators'''
     :: forall node .
        (NonLocal node)
        => GenCmmGraph node
@@ -178,6 +182,9 @@ graphWithDominators, graphWithDominators', graphWithDominators''
 
 -- XXX question for reviewer: should the graph returned be the original graph 
 -- or a new graph containing only the reachable nodes?
+-- ANSWER: new graph
+
+-- plan A: use existing dataflow framework, requires slow intersection
 
 graphWithDominators' g = GraphWithDominators g (fmap unLegacy dmap) rpmap
       where dmap = analyzeCmmFwd domlattice transfer g startFacts
@@ -243,8 +250,8 @@ instance Outputable DominatorSet where
 -- Plan B: use an array
 
 iterateFun :: (Eq a) => (a -> a) -> (a -> a)
-iterateFun f a = if a' == a then a else trace "take a step" $ iterateFun f a'
-    where a' = f a
+iterateFun f a = if a' == a then a else iterateFun f a'
+    where a' = trace "iterate array function" $ f a
 
 tabulate :: (Ix i) => (i, i) -> (i -> e) -> Array i e
 tabulate b f = listArray b $ map f $ range b
@@ -259,32 +266,44 @@ instance Show IDom where
 
 
 
-graphWithDominators g = traceFaults faults
+-- try them all and check consistency
+
+graphWithDominators g = traceFaults g' (traceFaults g'' g''')
   where g' = graphWithDominators' g
         g'' = graphWithDominators'' g
-        d' = gwd_dominators g'
-        d'' = gwd_dominators g''
+        g''' = graphWithDominators''' g
 
-        faults = [ (label, doms', doms'')
-                 | (label, doms') <- mapToList d'
-                 , let doms'' = mapFindWithDefault undefined label d''
-                 , doms' /= doms''
-                 ]
+        traceFaults :: GraphWithDominators node -> GraphWithDominators node -> GraphWithDominators node
+        traceFaults g' g'' = check faults
+         where
+          d' = gwd_dominators g'
+          d'' = gwd_dominators g''
 
-        traceFaults [] =
-            if d' == d'' then trace "dominators match" g' else panic "dominators don't match"
-        traceFaults ((l, ds', ds''):faults) =
-            trace (showSDocUnsafe $ "label" <+> ppr l <+>
-                   parens (hcat [ppr $ rpnum l, text ","] <+> (ppr $ rpnum' l)) <+>
-                   ": old doms" <+> ppr ds' <+> "; new doms" <+> ppr ds'') $
-                  traceFaults faults
+          faults = [ (label, doms', doms'')
+                   | (label, doms') <- mapToList d'
+                   , let doms'' = mapFindWithDefault undefined label d''
+                   , doms' /= doms''
+                   ]
 
-        rpnum lbl = mapFindWithDefault undefined lbl (gwd_rpnumbering g')
-        rpnum' lbl = mapFindWithDefault undefined lbl (gwd_rpnumbering g'')
+          check [] =
+              if d' == d'' then trace "dominators match" g'
+              else panic "dominators don't match"
+          check ((l, ds', ds''):faults) =
+              trace (showSDocUnsafe $ "label" <+> ppr l <+>
+                     parens (hcat [ppr $ rpnum l, text ","] <+> ppr (rpnum' l)) <+>
+                     ": old doms" <+> ppr ds' <+> "; new doms" <+> ppr ds'') $
+                    check faults
+
+          rpnum lbl = mapFindWithDefault undefined lbl (gwd_rpnumbering g')
+          rpnum' lbl = mapFindWithDefault undefined lbl (gwd_rpnumbering g'')
+
+
+-- plan B: fixed point of functional array -> array update
 
 graphWithDominators'' g = GraphWithDominators g dmap rpmap
       where rpblocks = revPostorderFrom (graphMap g) (g_entry g)
             rplabels' = map entryLabel rpblocks
+            rplabels :: Array Int Label
             rplabels = listArray bounds rplabels'
             labelIndex = flip (mapFindWithDefault undefined) imap
               where imap :: LabelMap Int
@@ -304,13 +323,13 @@ graphWithDominators'' g = GraphWithDominators g dmap rpmap
                          iterateFun update $
                          checkClimbing nonentryBounds $
                          poke $
-                         trace "first array" $ 
+                         trace "first array" $
                          listArray nonentryBounds $ map (IDom . aPred) [1..]
             domSet 0 = EntryNode
             domSet i = ImmediateDominator (rplabels ! d) (doms ! d)
                 where IDom d = idom_array ! i
             doms = tabulate bounds domSet
-                           
+
 
             traceDoms d = trace ("idoms == " ++ show d) d
 
@@ -349,6 +368,98 @@ checkClimbing (lo, hi) a
     | lo > hi = a
     | unIDom (a ! lo) < lo = checkClimbing (lo+1, hi) a
     | otherwise = panic $ "a[" ++ show lo ++ "] == " ++ show (a!lo)
+
+
+-- plan C: do it node by node with a mutable array
+--
+-- The advantage of this approach is that when the array is updated,
+-- later nodes can profit from updates in the earlier nodes, instead
+-- of having to wait for the next array-update cycle.  
+
+newtype IDomArray s = IDA { unIDA :: (STUArray s Int Int) }
+idaFromList :: (Int, Int) -> [IDom] -> ST s (IDomArray s)
+idaRead  :: IDomArray s -> Int -> ST s IDom
+idaWrite :: IDomArray s -> Int -> IDom -> ST s ()
+runIda :: (forall s . ST s (IDomArray s)) -> UArray Int Int
+--idaSub :: UArray Int Int -> Int -> IDom
+
+idaFromList bounds elems = IDA <$> newListArray bounds (map unIDom elems)
+idaRead (IDA a) i = IDom <$> readArray a i
+idaWrite (IDA a) i (IDom d) = writeArray a i d
+runIda a = runSTUArray (a >>= (return . unIDA))
+--idaSub a i = IDom (a ! i)
+
+
+data ThisChange = ThisChanged | ThisUnchanged
+
+graphWithDominators''' g = GraphWithDominators g dmap rpmap
+      where rpblocks = revPostorderFrom (graphMap g) (g_entry g)
+            rplabels' = map entryLabel rpblocks
+            rplabels :: Array Int Label
+            rplabels = listArray bounds rplabels'
+            labelIndex :: Label -> Int
+            labelIndex = flip (mapFindWithDefault undefined) imap
+              where imap :: LabelMap Int
+                    imap = mapFromList $ zip rplabels' [0..]
+            blockIndex = labelIndex . entryLabel
+
+            -- we don't store node 0.  Its immediate dominator is always the entry.
+            bounds = (0, length rpblocks - 1)
+            nonentryBounds = (1, length rpblocks - 1)
+
+            -- each node originally contains a predecessor
+            aPred i = head $ filter (<i) $ preds ! i
+            idom_array :: UArray Int Int
+            idom_array = runIda go
+               where go :: forall s . ST s (IDomArray s)
+                     go = do a <- idaFromList nonentryBounds $ map (IDom . aPred) [1..]
+                             update ThisChanged a
+            domSet 0 = EntryNode
+            domSet i = ImmediateDominator (rplabels ! d) (doms ! d)
+                where d = idom_array ! i
+            doms = tabulate bounds domSet
+
+
+--            traceDoms d = trace ("idoms == " ++ show d) d
+
+            dmap = mapFromList $ zipWith (\lbl i -> (lbl, domSet i)) rplabels' [0..]
+
+            rpmap :: LabelMap RPNum
+            rpmap = mapFromList $ zipWith kvpair rpblocks [0..]
+              where kvpair block i = (entryLabel block, RPNum i)
+
+
+
+            preds :: Array Int [Int]
+            preds = accumArray (flip (:)) [] nonentryBounds
+                    [ (labelIndex to, blockIndex from)
+                          | from <- rpblocks, to <- successors from ]
+
+            update :: forall s . ThisChange -> IDomArray s -> ST s (IDomArray s)
+            update ThisUnchanged a = return a
+            update ThisChanged a = -- trace "iterate node transfer" $
+                                   transfer ThisUnchanged rpblocks 0
+              where transfer :: ThisChange -> [Block node C C] -> Int -> ST s (IDomArray s)
+                    transfer change [] _ = update change a
+                    transfer change (block:blocks) i =
+                        propagateTo change $ map labelIndex $ successors block
+                      where propagateTo :: ThisChange -> [Int] -> ST s (IDomArray s)
+                            propagateTo change (succ:succs) =
+                                do old <- idaRead a succ
+                                   new <- intersect old (IDom i)
+                                   if old == new then
+                                       propagateTo change  succs
+                                   else
+                                       idaWrite a succ new >>
+                                       propagateTo ThisChanged succs
+                            propagateTo change [] = transfer change blocks i
+                    intersect :: IDom -> IDom -> ST s IDom
+                    intersect (IDom i) (IDom j) =
+                        case i `compare` j of
+                          LT -> do { next <- idaRead a j; IDom i `intersect` next }
+                          EQ -> return $ IDom i
+                          GT -> do { next <- idaRead a i; next `intersect` IDom j }
+
 
 
 
