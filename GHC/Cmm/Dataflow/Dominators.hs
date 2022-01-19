@@ -33,13 +33,13 @@ import GHC.Cmm.Dataflow.Graph
 import GHC.Cmm.Dataflow.Label
 import GHC.Cmm
 
-import GHC.Utils.Outputable(Outputable(..), text, int, hcat, (<+>), parens, showSDocUnsafe)
+import GHC.Utils.Outputable(Outputable(..), text, int, hcat, (<+>), parens, showSDocUnsafe, showPprUnsafe)
 import GHC.Utils.Panic
 import Control.Monad.ST
---import Debug.Trace
+import Debug.Trace
 
-trace :: String -> a -> a
-trace _ a = a
+-- trace :: String -> a -> a
+-- trace _ a = a
 
 -- | =Dominator sets
 
@@ -268,13 +268,13 @@ instance Show IDom where
 
 -- try them all and check consistency
 
-graphWithDominators g = traceFaults g' (traceFaults g'' g''')
+graphWithDominators g = traceFaults "single prime" g' (traceFaults "triple prime" g'' g''')
   where g' = graphWithDominators' g
         g'' = graphWithDominators'' g
         g''' = graphWithDominators''' g
 
-        traceFaults :: GraphWithDominators node -> GraphWithDominators node -> GraphWithDominators node
-        traceFaults g' g'' = check faults
+        traceFaults :: String -> GraphWithDominators node -> GraphWithDominators node -> GraphWithDominators node
+        traceFaults what g' g'' = check faults
          where
           d' = gwd_dominators g'
           d'' = gwd_dominators g''
@@ -286,12 +286,12 @@ graphWithDominators g = traceFaults g' (traceFaults g'' g''')
                    ]
 
           check [] =
-              if d' == d'' then trace "dominators match" g'
-              else panic "dominators don't match"
+              if d' == d'' then trace (what ++ ": dominators match") g'
+              else trace (what ++ ": dominators don't match") g'
           check ((l, ds', ds''):faults) =
               trace (showSDocUnsafe $ "label" <+> ppr l <+>
                      parens (hcat [ppr $ rpnum l, text ","] <+> ppr (rpnum' l)) <+>
-                     ": old doms" <+> ppr ds' <+> "; new doms" <+> ppr ds'') $
+                     ": doms'" <+> ppr ds' <+> "; doms''" <+> ppr ds'') $
                     check faults
 
           rpnum lbl = mapFindWithDefault undefined lbl (gwd_rpnumbering g')
@@ -314,7 +314,11 @@ graphWithDominators'' g = GraphWithDominators g dmap rpmap
             bounds = (0, length rpblocks - 1)
             nonentryBounds = (1, length rpblocks - 1)
 
-            poke a = trace "poking element 2" $ trace (show (a!2)) $ a
+            poke a =
+                if 2 <= snd bounds then
+                    trace "poking element 2" $ trace (show (a!2)) $ a
+                else
+                    a
 
             -- each node originally contains a predecessor
             aPred i = head $ filter (<i) $ preds ! i
@@ -437,7 +441,7 @@ graphWithDominators''' g = GraphWithDominators g dmap rpmap
 
             update :: forall s . ThisChange -> IDomArray s -> ST s (IDomArray s)
             update ThisUnchanged a = return a
-            update ThisChanged a = -- trace "iterate node transfer" $
+            update ThisChanged a = trace "iterate node transfer" $
                                    transfer ThisUnchanged rpblocks 0
               where transfer :: ThisChange -> [Block node C C] -> Int -> ST s (IDomArray s)
                     transfer change [] _ = update change a
@@ -450,9 +454,10 @@ graphWithDominators''' g = GraphWithDominators g dmap rpmap
                                    if old == new then
                                        propagateTo change  succs
                                    else
+                                       trace (debug i succ block old new) $
                                        idaWrite a succ new >>
                                        propagateTo ThisChanged succs
-                            propagateTo change [] = transfer change blocks i
+                            propagateTo change [] = transfer change blocks (i + 1)
                     intersect :: IDom -> IDom -> ST s IDom
                     intersect (IDom i) (IDom j) =
                         case i `compare` j of
@@ -460,9 +465,14 @@ graphWithDominators''' g = GraphWithDominators g dmap rpmap
                           EQ -> return $ IDom i
                           GT -> do { next <- idaRead a i; next `intersect` IDom j }
 
-
-
-
+                    debug i succ block old new =
+                      showPprUnsafe $
+                      ppr (entryLabel block) <.> ", i == " <+> int i <.> "," <+>
+                      "edge" <+> ilabel i <+> "->" <+> ilabel succ <.> ":" <+>
+                      "old ==" <+> pidx old <+> ", new ==" <+> pidx new
+                     where pidx (IDom i) = int i <.> parens (ilabel i)
+                           p <.> q = hcat [p, q]
+                           ilabel i = ppr (rplabels ! i)
 
 {-
             startFacts = mkFactBase domlattice [(g_entry g, EntryNode)]
