@@ -3,7 +3,7 @@ module GHC.Data.Graph.Inductive
     -- * General Type Defintions
     -- ** Node and Edge Types
     Node, LNode,
-    Edge,
+    Edge, LEdge,
     -- ** Types Supporting Inductive Graph View
     Adj,Context,MContext,Decomp,GDecomp, -- ,UContext,UDecomp,
     --Path,LPath(..),UPath,
@@ -32,10 +32,13 @@ module GHC.Data.Graph.Inductive
     DynGraph(..),
     ufold,
     context,
-    nodes
+    nodes,
+    insEdges,
+    insEdge
   )
 where
 
+import Data.List
 import Data.Maybe
 
 type Node = Int
@@ -140,3 +143,16 @@ context :: (Graph gr) => gr a b -> Node -> Context a b
 context g v = fromMaybe (error ("Match Exception, Node: "++show v))
                         (fst (match v g))
 
+
+
+insEdges :: (DynGraph gr) => [LEdge b] -> gr a b -> gr a b
+insEdges es g = foldl' (flip insEdge) g es
+
+-- | Insert a 'LEdge' into the 'Graph'.
+insEdge :: (DynGraph gr) => LEdge b -> gr a b -> gr a b
+insEdge (v,w,l) g = (pr,v,la,(l,w):su) & g'
+  where
+    (mcxt,g') = match v g
+    (pr,_,la,su) = fromMaybe
+                     (error ("insEdge: cannot add edge from non-existent vertex " ++ show v))
+                     mcxt

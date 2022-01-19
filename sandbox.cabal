@@ -80,7 +80,7 @@ executable ptest
                     GHC.Wasm.ControlFlow.Collapse,
                     GHC.Wasm.Paper,
                     GHC.Data.Graph.Inductive,
-                    GHC.Data.Graph.PatriciaTree,
+                    GHC.Data.Graph.Inductive.PatriciaTree,
                     FlowTest,
                     StgToCmmLite
 

@@ -19,13 +19,13 @@
 --
 -- * 'Data.Graph.Inductive.Graph.emap'
 
-module Data.Graph.Inductive.PatriciaTree
+module GHC.Data.Graph.Inductive.PatriciaTree
     ( Gr
     , UGr
     )
     where
 
-import Data.Graph.Inductive.Graph
+import GHC.Data.Graph.Inductive
 
 import           Control.Applicative (liftA2)
 import           Data.IntMap         (IntMap)
@@ -33,10 +33,6 @@ import qualified Data.IntMap         as IM
 import           Data.List           (foldl', sort)
 import           Data.Maybe          (fromMaybe)
 import           Data.Tuple          (swap)
-
-#if MIN_VERSION_containers (0,4,2)
-import Control.DeepSeq (NFData(..))
-#endif
 
 #if MIN_VERSION_containers(0,5,0)
 import qualified Data.IntMap.Strict as IMS
@@ -129,19 +125,14 @@ instance DynGraph Gr where
               !g3 = addPred g2 v ns succs
           in Gr g3
 
-#if MIN_VERSION_containers (0,4,2)
-instance (NFData a, NFData b) => NFData (Gr a b) where
-  rnf (Gr g) = rnf g
-#endif
 
-#if MIN_VERSION_base (4,8,0)
 instance Bifunctor Gr where
   bimap = fastNEMap
 
   first = fastNMap
 
   second = fastEMap
-#endif
+
 
 matchGr :: Node -> Gr a b -> Decomp Gr a b
 matchGr node (Gr g)
@@ -161,16 +152,19 @@ matchGr node (Gr g)
 -- OVERRIDING FUNCTIONS
 ----------------------------------------------------------------------
 
-{-# RULES
+{-
+
+{- RULES
       "insNode/Data.Graph.Inductive.PatriciaTree"  insNode = fastInsNode
-  #-}
+  -}
 fastInsNode :: LNode a -> Gr a b -> Gr a b
 fastInsNode (v, l) (Gr g) = g' `seq` Gr g'
   where
     g' = IM.insert v (IM.empty, l, IM.empty) g
 
+-}
 {-# RULES
-      "insEdge/Data.Graph.Inductive.PatriciaTree"  insEdge = fastInsEdge
+      "insEdge/GHC.Data.Graph.Inductive.PatriciaTree"  insEdge = fastInsEdge
   #-}
 fastInsEdge :: LEdge b -> Gr a b -> Gr a b
 fastInsEdge (v, w, l) (Gr g) = g2 `seq` Gr g2
@@ -181,41 +175,49 @@ fastInsEdge (v, w, l) (Gr g) = g2 `seq` Gr g2
     addS' (ps, l', ss) = (ps, l', IM.insertWith addLists w [l] ss)
     addP' (ps, l', ss) = (IM.insertWith addLists v [l] ps, l', ss)
 
-{-# RULES
+{-
+
+{- RULES
       "gmap/Data.Graph.Inductive.PatriciaTree"  gmap = fastGMap
-  #-}
+  -}
 fastGMap :: forall a b c d. (Context a b -> Context c d) -> Gr a b -> Gr c d
 fastGMap f (Gr g) = Gr (IM.mapWithKey f' g)
   where
     f' :: Node -> Context' a b -> Context' c d
     f' = ((fromContext . f) .) . toContext
 
-{-# RULES
+{- RULES
       "nmap/Data.Graph.Inductive.PatriciaTree"  nmap = fastNMap
-  #-}
+  -}
+-}
 fastNMap :: forall a b c. (a -> c) -> Gr a b -> Gr c b
 fastNMap f (Gr g) = Gr (IM.map f' g)
   where
     f' :: Context' a b -> Context' c b
     f' (ps, a, ss) = (ps, f a, ss)
+{-
 
-{-# RULES
-      "emap/Data.Graph.Inductive.PatriciaTree"  emap = fastEMap
-  #-}
+{- RULES
+      "emap/GHC.Data.Graph.Inductive.PatriciaTree"  emap = fastEMap
+   -}
+-}
 fastEMap :: forall a b c. (b -> c) -> Gr a b -> Gr a c
 fastEMap f (Gr g) = Gr (IM.map f' g)
   where
     f' :: Context' a b -> Context' a c
     f' (ps, a, ss) = (IM.map (map f) ps, a, IM.map (map f) ss)
 
-{-# RULES
-      "nemap/Data.Graph.Inductive.PatriciaTree"  nemap = fastNEMap
-  #-}
+{-  RULES
+      "nemap/GHC.Data.Graph.Inductive.PatriciaTree"  nemap = fastNEMap
+   -}
+
 fastNEMap :: forall a b c d. (a -> c) -> (b -> d) -> Gr a b -> Gr c d
 fastNEMap fn fe (Gr g) = Gr (IM.map f g)
   where
     f :: Context' a b -> Context' c d
     f (ps, a, ss) = (IM.map (map fe) ps, fn a, IM.map (map fe) ss)
+
+
 
 ----------------------------------------------------------------------
 -- UTILITIES
@@ -226,8 +228,8 @@ toAdj = concatMap expand . IM.toList
   where
     expand (n,ls) = map (flip (,) n) ls
 
-fromAdj :: Adj b -> IntMap [b]
-fromAdj = IM.fromListWith addLists . map (second (:[]) . swap)
+--fromAdj :: Adj b -> IntMap [b]
+--fromAdj = IM.fromListWith addLists . map (second (:[]) . swap)
 
 data FromListCounting a = FromListCounting !Int !(IntMap a)
   deriving (Eq, Show, Read)
@@ -254,11 +256,11 @@ fromAdjCounting = fromListWithCounting addLists . map (second (:[]) . swap)
 bulkThreshold :: Int
 bulkThreshold = 5
 
-toContext :: Node -> Context' a b -> Context a b
-toContext v (ps, a, ss) = (toAdj ps, v, a, toAdj ss)
+--toContext :: Node -> Context' a b -> Context a b
+--toContext v (ps, a, ss) = (toAdj ps, v, a, toAdj ss)
 
-fromContext :: Context a b -> Context' a b
-fromContext (ps, _, a, ss) = (fromAdj ps, a, fromAdj ss)
+--fromContext :: Context a b -> Context' a b
+--fromContext (ps, _, a, ss) = (fromAdj ps, a, fromAdj ss)
 
 -- A version of @++@ where order isn't important, so @xs ++ [x]@
 -- becomes @x:xs@.  Used when we have to have a function of type @[a]
