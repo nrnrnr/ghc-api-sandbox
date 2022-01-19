@@ -25,6 +25,14 @@ where
 import Data.Array.IArray
 import Data.Array.ST
 import Data.Array.Unboxed (UArray)
+import Data.Foldable()
+
+--import Data.IntMap.Strict (IntMap)
+import qualified Data.IntMap.Strict as IM
+--import Data.IntSet (IntSet)
+import qualified Data.IntSet as IS
+
+import qualified GHC.CmmToAsm.CFG.Dominators as LT
 
 import GHC.Cmm.Dataflow
 import GHC.Cmm.Dataflow.Block
@@ -174,7 +182,8 @@ data GraphWithDominators node =
   -- ^ Dominators and RP numberings include only *reachable* blocks.
 
 
-graphWithDominators, graphWithDominators', graphWithDominators'', graphWithDominators'''
+graphWithDominators, graphWithDominators', graphWithDominators'', graphWithDominators''',
+  graphWithDominators''''
     :: forall node .
        (NonLocal node)
        => GenCmmGraph node
@@ -268,10 +277,13 @@ instance Show IDom where
 
 -- try them all and check consistency
 
-graphWithDominators g = traceFaults "single prime" g' (traceFaults "triple prime" g'' g''')
+graphWithDominators g = traceFaults "single prime" g' $
+                        traceFaults "triple prime" g'' $
+                        traceFaults "quad prime" g''' g''''
   where g' = graphWithDominators' g
         g'' = graphWithDominators'' g
         g''' = graphWithDominators''' g
+        g'''' = graphWithDominators'''' g
 
         traceFaults :: String -> GraphWithDominators node -> GraphWithDominators node -> GraphWithDominators node
         traceFaults what g' g'' = check faults
@@ -487,6 +499,47 @@ graphWithDominators''' g = GraphWithDominators g dmap rpmap
             -- ^ reverse postorder number of each node
             nodenum block = mapFindWithDefault unreachableRPNum (entryLabel block) rpmap
 -}
+
+
+-- use Lengauer-Tarjan from x86 back end
+graphWithDominators'''' g = GraphWithDominators g dmap rpmap
+      where rpblocks = revPostorderFrom (graphMap g) (g_entry g)
+            rplabels' = map entryLabel rpblocks
+            rplabels :: Array Int Label
+            rplabels = listArray bounds rplabels'
+
+            rpmap :: LabelMap RPNum
+            rpmap = mapFromList $ zipWith kvpair rpblocks [0..]
+              where kvpair block i = (entryLabel block, RPNum i)
+
+            labelIndex :: Label -> Int
+            labelIndex = flip (mapFindWithDefault undefined) imap
+              where imap :: LabelMap Int
+                    imap = mapFromList $ zip rplabels' [0..]
+            blockIndex = labelIndex . entryLabel
+
+            bounds = (0, length rpblocks - 1)
+
+            ltGraph :: [Block node C C] -> LT.Graph
+            ltGraph [] = IM.empty
+            ltGraph (block:blocks) =
+                IM.insert
+                      (blockIndex block)
+                      (IS.fromList $ map labelIndex $ successors block)
+                      (ltGraph blocks)
+
+            idom_array :: Array Int LT.Node
+            idom_array = array bounds $ trace "LT.idom" $ LT.idom (0, tg $ trace "graph build" $ ltGraph rpblocks)
+
+            tg a = trace ("graph is " ++ show a) a
+            domSet 0 = EntryNode
+            domSet i = ImmediateDominator (rplabels ! d) (doms ! d)
+                where d = idom_array ! i
+            doms = tabulate bounds domSet
+
+            dmap = mapFromList $ zipWith (\lbl i -> (lbl, domSet i)) rplabels' [0..]
+
+
 
 
 intersectDominatorsSlow :: DominatorSet -> DominatorSet -> DominatorSet
