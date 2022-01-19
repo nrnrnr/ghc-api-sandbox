@@ -49,7 +49,7 @@ data ControlFlow e = Unconditional Label
 data ContainingSyntax
     = BlockFollowedBy Label
     | LoopHeadedBy Label
-    | IfThenElse Label -- label used only for debugging
+    | IfThenElse
     | BlockFollowedByTrap
 
 type Context = [ContainingSyntax]
@@ -71,9 +71,9 @@ structuredControl txExpr txBlock g = doNode (blockLabeled (g_entry g)) []
    -- | `doNode` basically handles Peterson's case 1: it emits code 
    -- from the block to the nearest merge node that the block dominates.
    --
-   -- `doExits` takes the merge nodes that the block dominates, which are
+   -- `nestWithin` takes the merge nodes that the block dominates, which are
    -- essentially the exits from a subgraph headed by the block.
-   -- For each merge node, `doExits` wraps the code that immediately
+   -- For each merge node, `nestWithin` wraps the code that immediately
    -- precedes it in `begin...end`, so that a suitable exit statement
    -- (Wasm `br` instruction) transfers control to the merge node.
    --
@@ -81,53 +81,47 @@ structuredControl txExpr txBlock g = doNode (blockLabeled (g_entry g)) []
    -- implemented by falling through or by a `br` instruction.
 
    doNode  :: CmmBlock               -> Context -> WasmControl s
-   doExits  :: CmmBlock -> [CmmBlock] -> Context -> WasmControl s
+   nestWithin  :: CmmBlock -> [CmmBlock] -> Context -> WasmControl s
    doBranch :: Label -> Label         -> Context -> WasmControl s
 
    doNode x context = 
-       if isHeader xlabel then
-           WasmLoop (emitBlockX (LoopHeadedBy xlabel : context))
-       else
-           emitBlockX context
+       let codeForX = nestWithin x (dominatees x)
+       in  if isHeader xlabel then
+             WasmLoop (codeForX (LoopHeadedBy xlabel : context))
+           else
+             codeForX context
      where xlabel = entryLabel x
-           emitBlockX = doExits x (dominatees x)
-           dominatees = case lastNode x of CmmSwitch {} -> allDominatees
-                                           _ -> mergeDominatees
+           dominatees = case lastNode x of
+                          CmmSwitch {} -> immediateDominatees
+                          _ -> filter isMergeNode . immediateDominatees
      -- N.B. Dominatees must be ordered with largest RP number first.
      -- (In Peterson, this is case 1 step 2, which I do before step 1)
 
-   doExits x (y:ys) context =
-       WasmBlock (doExits x ys (BlockFollowedBy ylabel : context)) <>
+   nestWithin x (y:ys) context =
+       WasmBlock (nestWithin x ys (BlockFollowedBy ylabel : context)) <>
        doNode y context
      where ylabel = entryLabel y
-   doExits x [] context =
-       -- trace ("Block " ++ showSDocUnsafe (ppr xlabel) ++ headerStatus ++ " in context " ++ showSDocUnsafe (ppr context)) $
-       emitBlockX context
+   nestWithin x [] context =
+     codeBody xlabel x <>
+     case flowLeaving genericPlatform x of
+       Unconditional l -> doBranch xlabel l context -- Peterson: case 1 step 6
+       Conditional e t f -> -- Peterson: case 1 step 5
+         WasmIf
+              (txExpr xlabel e)
+              (doBranch xlabel t (IfThenElse : context))
+              (doBranch xlabel f (IfThenElse : context))
+       TerminalFlow -> WasmReturn
+          -- Peterson: case 1 step 6, case 2 steps 2 and 3
+       Switch e range targets default' ->
+           WasmBrTable (txExpr xlabel e)
+                                          range
+                                          (map switchIndex targets)
+                                          (switchIndex default')
+    where switchIndex :: Maybe Label -> Int
+          switchIndex Nothing = trapIndex context
+          switchIndex (Just lbl) = index' lbl context
 
-     -- (In Peterson, emitBlockX combines case 1 step 6, case 2 step 1, case 2 step 3)
-     where emitBlockX context =
-             codeBody xlabel x <>
-             case flowLeaving genericPlatform x of
-               Unconditional l -> doBranch xlabel l context -- Peterson: case 1 step 6
-               Conditional e t f -> -- Peterson: case 1 step 5
-                 WasmIf
-                      (txExpr xlabel e)
-                      (doBranch xlabel t (IfThenElse xlabel : context))
-                      (doBranch xlabel f (IfThenElse xlabel : context))
-               TerminalFlow -> WasmReturn
-                  -- Peterson: case 1 step 6, case 2 steps 2 and 3
-               Switch e range targets default' ->
-                   WasmBrTable (txExpr xlabel e)
-                                                  range
-                                                  (map switchIndex targets)
-                                                  (switchIndex default')
-            where switchIndex :: Maybe Label -> Int
-                  switchIndex Nothing = trapIndex context
-                  switchIndex (Just lbl) = index' lbl context
-                          
-
-           xlabel = entryLabel x
-           -- headerStatus = if isHeader xlabel then " (HEADER)" else " (not header)"
+          xlabel = entryLabel x
 
 
    -- In Peterson, `doBranch` implements case 2 (and part of case 1)
@@ -145,13 +139,9 @@ structuredControl txExpr txBlock g = doNode (blockLabeled (g_entry g)) []
    forwardPreds :: Label -> [Label] -- ^ reachable predecessors of reachable blocks,
                                     -- via forward edges only
    isMergeLabel :: Label -> Bool
-   isMergeBlock :: CmmBlock -> Bool
+   isMergeNode :: CmmBlock -> Bool
    isHeader :: Label -> Bool -- ^ identify loop headers
-   mergeDominatees :: CmmBlock -> [CmmBlock]
-     -- ^ merge nodes whose immediate dominator is the given block.
-     -- They are produced with the largest RP number first,
-     -- so the largest RP number is pushed on the context first.
-   allDominatees :: CmmBlock -> [CmmBlock]
+   immediateDominatees :: CmmBlock -> [CmmBlock]
      -- ^ all nodes whose immediate dominator is the given block.
      -- They are produced with the largest RP number first,
      -- so the largest RP number is pushed on the context first.
@@ -184,7 +174,7 @@ structuredControl txExpr txBlock g = doNode (blockLabeled (g_entry g)) []
                  | otherwise = addToList (from :) to pm
 
    isMergeLabel l = setMember l mergeBlockLabels
-   isMergeBlock = isMergeLabel . entryLabel                   
+   isMergeNode = isMergeLabel . entryLabel                   
 
    mergeBlockLabels :: LabelSet
    -- N.B. A block is a merge node if it is where control flow merges.
@@ -204,8 +194,7 @@ structuredControl txExpr txBlock g = doNode (blockLabeled (g_entry g)) []
                 setFromList [label | label <- successors block,
                                               dominates label (entryLabel block)]
 
-   mergeDominatees = filter isMergeBlock . allDominatees
-   allDominatees x = idominatees (entryLabel x)
+   immediateDominatees x = idominatees (entryLabel x)
 
    index' lbl context =
        if stackHas context lbl then index lbl context
@@ -259,6 +248,7 @@ structuredControl txExpr txBlock g = doNode (blockLabeled (g_entry g)) []
                  case idom blockname of Nothing -> False
                                         Just doms -> dominatorsMember lbl doms
 
+   isBackward :: Label -> Label -> Bool
    isBackward from to = rpnum to <= rpnum from -- self-edge counts as a backward edge
 
 type Dominatees = [(Label, RPNum)] 
@@ -336,7 +326,7 @@ pprShow a = showSDocUnsafe (ppr a)
 instance Outputable ContainingSyntax where
     ppr (BlockFollowedBy l) = text "node" <+> ppr l
     ppr (LoopHeadedBy l) = text "loop" <+> ppr l
-    ppr (IfThenElse l) = text "if-then-else" <+> ppr l
+    ppr (IfThenElse) = text "if-then-else"
     ppr (BlockFollowedByTrap) = text "trap"
 
 stackHas :: Context -> Label -> Bool
