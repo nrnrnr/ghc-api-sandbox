@@ -105,10 +105,14 @@ fastReducibility rpnum dominates blockmap =
 dotNode :: (a -> SDoc) -> LabelSet -> (Label -> RPNum) -> LabelMap DominatorSet -> (Label, a) -> SDoc
 dotNode display headers rpnum dmap (label, a) =
   dotName label <> space <>
-  text "[label=" <> doubleQuotes (display a) <> headermark <> text "]"
+  text "[label=" <> doubleQuotes (hcat [display a, dotlabel]) <> headermark <> text "]"
                 <> text ";"
-  where _dotlabel = ppr label <> text "(" <> ppr nodenum <>
-                    text "): " <> dotDominators (mapLookup label dmap)
+  where dotlabel =
+            if False then -- noisy
+                text " ==" <+> ppr label <> text "(" <> ppr nodenum <>
+                text "): " <> dotDominators (mapLookup label dmap)
+            else
+                empty
         nodenum = rpnum label
         headermark = if setMember label headers then
                          space <> text "peripheries=2"
