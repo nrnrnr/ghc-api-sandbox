@@ -6,7 +6,7 @@ where
 
 import Prelude hiding (succ)
 
-import GHC.Cmm.Dataflow.Dominators
+import GHC.Cmm.Dominators
 
 --import Data.Function
 --import Data.List (sortBy)

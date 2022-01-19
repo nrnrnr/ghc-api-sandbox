@@ -10,7 +10,7 @@ where
 
 import Control.Exception
 import GHC.Data.Graph.Inductive
-import GHC.Cmm.Dataflow.Dominators (RPNum)
+import GHC.Cmm.Dominators (RPNum)
 
 --import Prelude hiding (succ)
 --
@@ -21,7 +21,7 @@ import Data.List
 --import GHC.Cmm
 --import GHC.Cmm.Dataflow.Block
 import GHC.Cmm.Dataflow.Collections
---import GHC.Cmm.Dataflow.Dominators
+--import GHC.Cmm.Dominators
 --import GHC.Cmm.Dataflow.Graph
 import GHC.Cmm.Dataflow.Label
 --import GHC.Cmm.Switch

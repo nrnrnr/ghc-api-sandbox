@@ -18,7 +18,7 @@ import Data.List
 import GHC.Utils.Panic
 
 import GHC.Cmm.Dataflow
-import GHC.Cmm.Dataflow.Dominators
+import GHC.Cmm.Dominators
 import GHC.Cmm.Dataflow.Graph
 import GHC.Cmm.Dataflow.Label
 

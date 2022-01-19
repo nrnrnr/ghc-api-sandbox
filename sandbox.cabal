@@ -49,7 +49,7 @@ common program-default-options
 --      other-modules:  StgToCmmLite, StackLang, Simple.Stg, Simple.Stack,
 --                      Simple.Stg.Outputable,
 --                      Simple.ImportStg, Simple.Codegen, Simple.Common,
---                      DotCfg, GHC.Cmm.Dataflow.Dominators, Peterson, PetersonR
+--                      DotCfg, GHC.Cmm.Dominators, Peterson, PetersonR
 --  
 --      -- LANGUAGE extensions used by modules in this package.
 --      -- other-extensions:
@@ -66,12 +66,12 @@ executable ptest
     main-is:          PTest.hs
 
     -- Modules included in this executable, other than Main.
-    other-modules:  GHC.Cmm.Dataflow.Dominators, DotCfg, SCode,
+    other-modules:  GHC.Cmm.Dominators, DotCfg, SCode,
                     GHC.Wasm.ControlFlow, GHC.Wasm.Ppr.Control,
                     GHC.Wasm.ControlFlow.Run,
                     GHC.Wasm.ControlFlow.OfCmm,
                     GHC.Wasm.ControlFlow.Paper,
-                    GHC.Cmm.Dataflow.Dominators.Lint,
+                    GHC.Cmm.Dominators.Lint,
                     GHC.Cmm.Reducibility,
                     GHC.Test.ControlMonad, GHC.Cmm.LoopInfo,
                     GHC.Test.ControlMonad.QC,

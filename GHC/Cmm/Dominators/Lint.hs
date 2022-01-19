@@ -1,7 +1,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module GHC.Cmm.Dataflow.Dominators.Lint
+module GHC.Cmm.Dominators.Lint
   ( shortPaths'
 
   , dominatorsClimb
@@ -18,7 +18,7 @@ where
 import GHC.Cmm.Dataflow
 import GHC.Cmm.Dataflow.Block
 import GHC.Cmm.Dataflow.Collections
-import GHC.Cmm.Dataflow.Dominators
+import GHC.Cmm.Dominators
 import GHC.Cmm.Dataflow.Graph
 import GHC.Cmm.Dataflow.Label
 import GHC.Cmm

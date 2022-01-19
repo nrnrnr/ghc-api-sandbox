@@ -11,7 +11,7 @@ where
 
 import Prelude hiding ((<>))
 
-import GHC.Cmm.Dataflow.Dominators
+import GHC.Cmm.Dominators
 
 import GHC.Cmm
 import GHC.Cmm.Dataflow

@@ -7,7 +7,7 @@ module GHC.Cmm.LoopInfo
 where
 
 import GHC.Cmm.Dataflow.Collections
-import GHC.Cmm.Dataflow.Dominators
+import GHC.Cmm.Dominators
 import GHC.Cmm.Dataflow.Graph
 import GHC.Cmm.Dataflow.Label
 

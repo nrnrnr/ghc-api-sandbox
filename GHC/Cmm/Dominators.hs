@@ -4,7 +4,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE RankNTypes #-}
 
-module GHC.Cmm.Dataflow.Dominators
+module GHC.Cmm.Dominators
   ( DominatorSet(..)
   , GraphWithDominators(..)
   , RPNum
@@ -78,7 +78,7 @@ data LegacyDominatorSet = NumberedNode' { _ds_revpostnum' :: RPNum
 unLegacy :: LegacyDominatorSet -> DominatorSet
 unLegacy EntryNode' = EntryNode
 unLegacy NumberedNode' { ds_label' = l, ds_parent' = p } = ImmediateDominator l (unLegacy p)
-unLegacy AllNodes' = panic "GHC.Cmm.Dataflow.Dominators: undefined dominator"
+unLegacy AllNodes' = panic "GHC.Cmm.Dominators: undefined dominator"
 
 -- | Reverse postorder number of a node in a CFG
 newtype RPNum = RPNum Int

@@ -18,7 +18,7 @@ import Control.Monad.IO.Class
 import GHC.Wasm.ControlFlow.OfCmm
 import GHC.Wasm.ControlFlow
 
-import GHC.Cmm.Dataflow.Dominators
+import GHC.Cmm.Dominators
 
 
 import System.FilePath as FilePath
@@ -52,7 +52,7 @@ import GHC.Utils.Ppr (Mode(PageMode))
 import GHC.Cmm
 import GHC.Cmm.CLabel
 import GHC.Cmm.Dataflow.Collections
-import GHC.Cmm.Dataflow.Dominators.Lint
+import GHC.Cmm.Dominators.Lint
 import GHC.Cmm.ContFlowOpt
 import GHC.Cmm.Dataflow.Block
 import GHC.Cmm.Dataflow.Graph
