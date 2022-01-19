@@ -44,10 +44,10 @@ import GHC.Cmm
 import GHC.Utils.Outputable(Outputable(..), text, int, hcat, (<+>), parens, showSDocUnsafe, showPprUnsafe)
 import GHC.Utils.Panic
 import Control.Monad.ST
-import Debug.Trace
+-- import Debug.Trace
 
--- trace :: String -> a -> a
--- trace _ a = a
+trace :: String -> a -> a
+trace _ a = a
 
 -- | =Dominator sets
 
