@@ -1,9 +1,11 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 
 module GHC.Wasm.ControlFlow.Collapse
---  ( structuredControl
---  )
+  ( collapse
+  , Info(..)
+  )
 where
 
 import Control.Exception
@@ -34,39 +36,27 @@ import GHC.Utils.Panic
 --
 --
 
+class (Graph gr, Monad m) => VizMonad m gr where
+  initialGraph :: gr Info () -> m ()
+  splitGraphAt :: gr Info () -> Node -> m ()
+  finalGraph :: gr Info () -> m ()  
+
+
+
 data Info = I { unsplitLabels :: LabelSet
               , splitLabels :: LabelSet
               , rpnumber :: RPNum
               }
 
-mapMinus :: IsMap map => map a -> KeyOf map -> map a
-mapMinus = flip mapDelete
+-- mapMinus :: IsMap map => map a -> KeyOf map -> map a
+-- mapMinus = flip mapDelete
+-- 
+-- setMap :: IsSet set => (ElemOf set -> ElemOf set) -> set -> set
+-- setMap f = setFoldl (\mapped a -> setInsert (f a) mapped) setEmpty
 
-setMap :: IsSet set => (ElemOf set -> ElemOf set) -> set -> set
-setMap f = setFoldl (\mapped a -> setInsert (f a) mapped) setEmpty
-
-isSingleton :: IsSet set => set -> Bool
-isSingleton s = case setElems s of [_] -> True
-                                   _ -> False
-
-{-
-consumeBy toL fromL g =
-  assert (isSingleton $ setMap meaning $ preds to) $
-  assert (not $ mapMember toL (aliases g)) $
-  error "unfinished" from' nodeMap' aliases'
- where to = node toL
-       from = node fromL
-       node label = fromJust $ mapLookup (meaning label) (nodeMap g)
-       meaning label = mapFindWithDefault label label (aliases g)
-       from' = from { preds = setDelete toL (preds from)
-                    , unsplitLabels = unsplitLabels from `setUnion` unsplitLabels to
-                    , splitLabels   = splitLabels   from `setUnion` splitLabels   to
-                    , rpnumber = rpnumber from `min` rpnumber to
-                    }
-       nodeMap' = nodeMap g `mapMinus` fromL `mapMinus` toL
-       aliases' = mapInsert toL fromL $ aliases g
--}
-
+-- isSingleton :: IsSet set => set -> Bool
+-- isSingleton s = case setElems s of [_] -> True
+--                                   _ -> False
 
 singlePred :: Graph gr => gr a b -> Node -> Bool
 singlePred gr n
@@ -79,6 +69,16 @@ forceMatch node g = case match node g of (Just c, g') -> (c, g')
 
 -- | Merge two nodes, return new graph plus list of nodes that newly have a single
 -- predecessor
+
+   -- ^ `consumeBy v u g` returns the graph that results when node v is
+   -- consumed by node u in graph g.  Both v and u are replaced with a new node u' 
+   -- with these properties:
+   --    LABELS(u') = LABELS(u) `union` LABELS(v)
+   --    SUCC(u') = SUCC(u) `union` SUCC(v) - { u }
+   --    every node that previously points to u now points to u'
+   -- It also returns a list of nodes in the result graph that
+   -- are *newly* single-predecessor nodes.
+
 consumeBy :: DynGraph gr => Node -> Node -> gr Info () -> (gr Info (), [Node])
 consumeBy toNode fromNode g =
     assert (toPreds == [((), fromNode)]) $
@@ -97,6 +97,7 @@ consumeBy toNode fromNode g =
         newGraph = context & g''
         newCandidates = filter (singlePred newGraph) $ map snd (toSuccs `intersect` fromSuccs)
 
+{-
 consumeBy' :: DynGraph gr => Node -> Node -> gr Info () -> gr Info ()
 consumeBy' toNode fromNode g =
     assert (toPreds == [((), fromNode)]) $
@@ -112,15 +113,7 @@ consumeBy' toNode fromNode g =
                   , info
                   , delete ((), fromNode) toSuccs ++ fromSuccs
                   )
-    
---consumeBy :: Label -> Label -> Graph -> Graph
-   -- ^ `consumeBy v u` returns the graph that results when node v is
-   -- consumed by node u.  Both v and u are replaced with a new node u' 
-   -- with these properties:
-   --    LABELS(u') = LABELS(u) `union` LABELS(v)
-   --    SUCC(u') = SUCC(u) `union` SUCC(v) - { u }
-   --    every node that previously points to u now points to u'
-   -- 
+-}    
 
 split :: DynGraph gr => Node -> gr Info b -> gr Info b
 split node g = assert (isMultiple preds) $ foldl addReplica g' newNodes
@@ -138,13 +131,13 @@ isMultiple [] = False
 isMultiple [_] = False
 isMultiple (_:_:_) = True
 
-consumeableEdge :: Graph gr => gr a b -> Maybe Edge
-hasExactlyOneNode :: Graph gr => gr a b -> Bool
+--consumeableEdge :: Graph gr => gr a b -> Maybe Edge
+-- hasExactlyOneNode :: Graph gr => gr a b -> Bool
 leastSplittable :: Graph gr => gr Info () -> Node
 
-hasExactlyOneNode g = case labNodes g of [_] -> True
-                                         _ -> False
-consumeableEdge = error "unimp"
+--hasExactlyOneNode g = case labNodes g of [_] -> True
+--                                         _ -> False
+--consumeableEdge = error "unimp"
 
 leastSplittable g = node $ minimumBy (compare `on` num) splittable
   where splittable = filter (isMultiple . preds) $ map about $ labNodes g
@@ -155,22 +148,26 @@ leastSplittable g = node $ minimumBy (compare `on` num) splittable
         about (n, info) = (ps, n, rpnumber info)
           where (ps, _, _, _) = context g n
 
-preds :: Graph gr => gr a b -> Node -> [Node]
-preds g n = map snd ps
-    where (ps, _, _, _) = context g n
+--preds :: Graph gr => gr a b -> Node -> [Node]
+--preds g n = map snd ps
+--    where (ps, _, _, _) = context g n
 
 singletonGraph :: Graph gr => gr a b -> Bool
 singletonGraph g = case labNodes g of [_] -> True
                                       _ -> False
 
 
-collapse :: DynGraph gr => gr Info () -> gr Info ()
-collapse g = drain g worklist
+collapse :: (DynGraph gr, VizMonad m gr) => gr Info () -> m (gr Info ())
+collapse g = do initialGraph g
+                drain g worklist
   where worklist :: [[Node]] -- ^ nodes with exactly one predecessor
         worklist = [filter (singlePred g) $ nodes g]
 
-        drain g [] = if singletonGraph g then g
-                     else collapse $ split (leastSplittable g) g
+        drain g [] = do finalGraph g
+                        if singletonGraph g then return g
+                        else let n = leastSplittable g
+                             in  do splitGraphAt g n
+                                    collapse $ split (leastSplittable g) g
         drain g ([]:nss) = drain g nss
         drain g ((n:ns):nss) = let (g', ns') = consumeBy n (theUniquePred n) g
                                in  drain g' (ns':ns:nss)
@@ -180,38 +177,11 @@ collapse g = drain g worklist
                    
 
 
-singleton :: [a] -> Bool
-singleton [_] = True
-singleton _ = False
+-- singleton :: [a] -> Bool
+-- singleton [_] = True
+-- singleton _ = False
 
 {- 
-
-I've implemented an algorithm on a directed graph that basically goes like this:
-
-  1. Find a node with exactly one predecessor
-  2. Remove that node, transferring its outgoing edges to the unique predecessor
-  3. Repeat until no single-predecessor nodes are left
-
-I'm struggling to think of an efficient way to implement step 1.  Right now I'm using linear search, which makes the cost of the whole algorithm quadratic.  Not good.  I'm quite willing to use an auxiliary data structure, but I haven't been smart enough to think of one that I can update efficiently as nodes are removed and edges are transferred.
-
-Does anybody have any ideas?
-
--}
-
-
-{-
-
-I'm advertising for programming advice.  I need to implement an
-algorithm on a directed graph, but my purely functional data
-structures are rusty, and I'm having trouble thinking of a
-representation that will support the operations I want.  My top
-criterion is that the code be clean, but it's also necessary that the
-efficiency not embarrass anyone.
-
-I'd love to schedule a call or maybe do some pair programming.
-
-Problem details in a reply.
-
 
 I'd like to implement an algorithm on the following species of directed graph:
 
