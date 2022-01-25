@@ -5,7 +5,11 @@ import Data.Map (Map, insertWith, toList, empty)
 
 import GHC.Driver.Backend
 import GHC.Driver.Backend.Rep
+import GHC.Utils.Error
 
+isValid :: Validity -> Bool
+isValid IsValid = True
+isValid (NotValid _) = False
 
 main :: IO ()
 main = do
@@ -59,35 +63,34 @@ table f = [(name, f b) | (name, b) <- backends]
 
 predicates :: [(String, Backend -> Bool)]
 predicates = 
-   [ ("backendProducesObject", backendProducesObject)
-   , ("backendNeedn'tLink", backendNeedn'tLink)
+   [ ("backendWritesFiles", backendWritesFiles)
+   , ("backendNeedsLink", backendNeedsLink)
    , ("backendGeneratesCode", backendGeneratesCode)
-   , ("backendInterfaceHasCodegen", backendInterfaceHasCodegen)
    , ("backendRetainsAllBindings", backendRetainsAllBindings)
 
-   , ("backendWantsLlvmCppMacros", backendWantsLlvmCppMacros)
    , ("backendWantsClangTools", backendWantsClangTools)
 
    , ("backendNeedsFullWays", backendNeedsFullWays)
 
-   , ("useNcgPrimitives", useNcgPrimitives)
-   , ("useLlvmPrimitives", useLlvmPrimitives)
+   , ("backendWantsNcgPrimitives", backendWantsNcgPrimitives)
+   , ("backendWantsLlvmPrimitives", backendWantsLlvmPrimitives)
 
 
-   , ("backendSupportsSwitch", backendSupportsSwitch)
+   , ("backendHasNativeSwitch", backendHasNativeSwitch)
 
+   , ("backendCanExportCStatics", isValid . backendValidityOfCExportStatic)
+   , ("backendCanImportC", isValid . backendValidityOfCImport)
 
    , ("backendSupportsStopC", backendSupportsStopC)
 
-   , ("supportsHpc", supportsHpc)
-   , ("needsPlatformNcgSupport", needsPlatformNcgSupport)
+   , ("backendSupportsHpc", backendSupportsHpc)
+   , ("backendNeedsPlatformNcgSupport", backendNeedsPlatformNcgSupport)
 
    , ("backendUnregisterisedOnly", backendUnregisterisedOnly)
-   , ("canReplaceViaC", canReplaceViaC)
-   , ("canBeReplacedByViaC", canBeReplacedByViaC)
+   , ("backendSwappableWithViaC", backendSwappableWithViaC)
 
    , ("backendForcesOptimization0", backendForcesOptimization0)
-   , ("backendSplitsProcPoints", backendSplitsProcPoints)
+   , ("backendSupportsUnsplitProcPoints", backendSupportsUnsplitProcPoints)
 
 
    , ("backendWantsBreakpointTicks", backendWantsBreakpointTicks)
@@ -98,11 +101,9 @@ predicates =
 
    , ("backendSptIsDynamic", backendSptIsDynamic)
 
-   , ("backendInhibitsInterfaceWriting", backendInhibitsInterfaceWriting)
+   , ("backendSupportsInterfaceWriting", backendSupportsInterfaceWriting)
 
-   , ("backendIgnoresSpecialise", backendIgnoresSpecialise)
-
-   , ("backendWantsInterfaceFile", backendWantsInterfaceFile)
+   , ("backendRespectsSpecialise", backendRespectsSpecialise)
 
 
    ]
