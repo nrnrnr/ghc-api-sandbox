@@ -111,6 +111,23 @@ data Backend dflags =
             -- code into the filesystem.  (That means, not the interpreter.)
             , backendWritesFiles :: !Bool
 
+            -- | When the back end does write files, this value tells
+            -- the compiler in what manner of file the output should go:
+            -- temporary, persistent, or specific.
+            , backendPipelineOutput :: PipelineOutput
+
+            , backendGeneratesCode :: !Bool
+                 -- ^ if not, need to turn on code gen for TH.  If so,
+                 -- supports HscRecomp.  If not, there is no output
+                 -- file.  If not, recompilation does not need a
+                 -- linkable (and is automatically up to date).
+                                      -- And a ton of stuff in the driver.
+
+            , backendSupportsInterfaceWriting :: !Bool
+                 -- ^ Turn on interface writing for Backpack Should
+                 -- probably be the same as `backendGeneratesCode`,
+                 -- but is kept distinct for reasons described in Note
+                 -- [-fno-code mode]
 
             -- | When preparing code for this back end, the type
             -- checker should pay attention to SPECIALISE pragmas.  If
@@ -141,6 +158,9 @@ data Backend dflags =
             , backendWantsLlvmPrimitives :: !Bool
 
 
+            -- | When `IsValid`, the back end is compatible with vector instructions.
+            -- When `NotValid`, carries a message that is shown to users.
+            , backendSimdValidity :: Validity' String
 
             -- | Can the back end support large binary blobs?  See
             -- Note [Embedding large binary blobs] in GHC.CmmToAsm.Ppr.
@@ -164,9 +184,6 @@ data Backend dflags =
             , backendSupportsUnsplitProcPoints :: !Bool
 
 
-            , backendPipeline :: PipelineName
-            , backendUnregisterisedOnly :: !Bool
-
             -- | This flag guides the driver in resolving issues about
             -- API support on the target platform. If the flag is set,
             -- then these things are true:
@@ -178,6 +195,18 @@ data Backend dflags =
             --      this back end can replace compilation via C.
             --
             , backendSwappableWithViaC :: !Bool
+
+
+            -- | This flag is true if the back end works *only* with
+            -- the unregisterised ABI.
+            , backendUnregisterisedAbiOnly :: !Bool
+
+            -- | This flag is set if the back end generates C code in
+            -- a .hc file.  The flag is used to let the compiler
+            -- driver know if the command-line flag `-C` is
+            -- meaningful.
+            , backendGeneratesHc :: !Bool
+
 
 
             -- The next four flags are True only for the interpreter.
@@ -208,18 +237,36 @@ data Backend dflags =
             -- will issue a warning message if it is used).
             , backendSupportsHpc :: !Bool
 
+
+
             , backendValidityOfCExportStatic :: !Validity
-
-            , backendSupportsStopC :: !Bool
             , backendValidityOfCImport :: !Validity
-            , backendNeedsLink :: !Bool
-            , backendGeneratesCode :: !Bool
-            , backendSupportsInterfaceWriting :: !Bool
-            , backendSupportsSimd :: !Bool
 
 
+
+            ----------------- supporting tooling
+
+{-
+        let (as_prog, get_asm_info) | backendWantsClangTools (backend dflags)
+                    , platformOS platform == OSDarwin
+                    = (GHC.SysTools.runClang, pure Clang)
+                    | otherwise
+                    = (GHC.SysTools.runAs, getAssemblerInfo logger dflags)
+-}
+
+            , backendAssemblerProg :: Logger -> dflags -> Platform -> [Option] -> IO ()
+            , backendAssemblerInfo :: Logger -> dflags -> IO CompilerInfo
+
+
+            , backendCDefs :: Logger -> dflags -> IO [String]
+
+
+            ----------------- code generation and compiler driver
+
+            , backendPipeline :: PipelineName
             , backendNormalSuccessorPhase :: Phase
-            , backendWantsClangTools :: !Bool
-            , backendPipelineOutput :: PipelineOutput
-            , backendCDefs :: Logger -> (String, [Option]) -> IO [String]
+
+
+
+
             }

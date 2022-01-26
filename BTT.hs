@@ -5,11 +5,16 @@ import Data.Map (Map, insertWith, toList, empty)
 
 import GHC.Driver.Backend
 import GHC.Driver.Backend.Rep
+import GHC.Driver.Pipeline.Monad
 import GHC.Utils.Error
 
 isValid :: Validity -> Bool
 isValid IsValid = True
 isValid (NotValid _) = False
+
+isNoOutputFile :: PipelineOutput -> Bool
+isNoOutputFile NoOutputFile = True
+isNoOutputFile _ = False
 
 main :: IO ()
 main = do
@@ -64,7 +69,6 @@ table f = [(name, f b) | (name, b) <- backends]
 predicates :: [(String, Backend -> Bool)]
 predicates = 
    [ ("backendWritesFiles", backendWritesFiles)
-   , ("backendNeedsLink", backendNeedsLink)
    , ("backendGeneratesCode", backendGeneratesCode)
    , ("backendRetainsAllBindings", backendRetainsAllBindings)
 
@@ -78,8 +82,9 @@ predicates =
 
    , ("backendHasNativeSwitch", backendHasNativeSwitch)
 
-   , ("backendCanExportCStatics", isValid . backendValidityOfCExportStatic)
-   , ("backendCanImportC", isValid . backendValidityOfCImport)
+   , ("isValid . backendValidityOfCExportStatic", isValid . backendValidityOfCExportStatic)
+   , ("isValid . backendValidityOfCImport", isValid . backendValidityOfCImport)
+   , ("isNoOutputFile . backendPipelineOutput", isNoOutputFile . backendPipelineOutput)
 
    , ("backendSupportsStopC", backendSupportsStopC)
 
