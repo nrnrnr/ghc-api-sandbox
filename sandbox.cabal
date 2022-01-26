@@ -71,6 +71,7 @@ executable ptest
                     GHC.Wasm.ControlFlow.Run,
                     GHC.Wasm.ControlFlow.OfCmm,
                     GHC.Wasm.ControlFlow.Paper,
+                    GHC.Wasm.ControlFlow.PaperRun,
                     GHC.Cmm.Dominators.Lint,
                     GHC.Cmm.Reducibility,
                     GHC.Test.ControlMonad, GHC.Cmm.LoopInfo,

@@ -102,7 +102,7 @@ structuredControl txExpr txBlock g = doNode (blockLabeled (g_entry g)) []
        doNode y context
      where ylabel = entryLabel y
    nestWithin x [] context =
-     codeBody xlabel x <>
+     WasmSlc (txBlock xlabel (nodeBody x)) <>
      case flowLeaving genericPlatform x of
        Unconditional l -> doBranch xlabel l context -- Peterson: case 1 step 6
        Conditional e t f -> -- Peterson: case 1 step 5
@@ -149,8 +149,8 @@ structuredControl txExpr txBlock g = doNode (blockLabeled (g_entry g)) []
      -- ^ Domination relation (not just immediate domination)
 
    -- | Translate straightline code, which is uninterpreted except by `txBlock`.
-   codeBody :: Label -> Block CmmNode C C -> WasmControl s
-   codeBody lbl block = WasmSlc (txBlock lbl (nodeBody block))
+   --codeActions :: Label -> Block CmmNode C C -> WasmControl s
+   --codeActions lbl block = WasmSlc (txBlock lbl (nodeBody block))
 
 
 
