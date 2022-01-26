@@ -245,6 +245,17 @@ data Backend dflags =
 
 
             ----------------- supporting tooling
+            -- | The assembler used on the code that is written by this back end.
+            -- A program determined by a combination of back end,
+            -- DynFlags, and Platform is run with the given `Option`s.
+            , backendAssemblerProg :: Logger -> dflags -> Platform -> [Option] -> IO ()
+
+            -- | Used to retrieve an enumeration value that
+            -- characterizes the C/assembler part of a toolchain.
+            -- Caches the info in a mutable variable that is part of
+            -- the DynFlags.
+            , backendAssemblerInfo :: Logger -> dflags -> IO CompilerInfo
+
 
 {-
         let (as_prog, get_asm_info) | backendWantsClangTools (backend dflags)
@@ -254,16 +265,37 @@ data Backend dflags =
                     = (GHC.SysTools.runAs, getAssemblerInfo logger dflags)
 -}
 
-            , backendAssemblerProg :: Logger -> dflags -> Platform -> [Option] -> IO ()
-            , backendAssemblerInfo :: Logger -> dflags -> IO CompilerInfo
 
 
+
+            -- | When using this back end, it may be necessary or
+            -- advisable to pass some `-D` options to a C compiler.
+            -- This function produces those options, if any.  An IO
+            -- action may be necessary in order to interrogate
+            -- external tools about what version they are, for
+            -- example.
             , backendCDefs :: Logger -> dflags -> IO [String]
 
 
             ----------------- code generation and compiler driver
 
-            , backendPipeline :: PipelineName
+            , backendCodeOutput :: Logger
+                                -> dflags
+                                -> Module -- this_mode
+                                -> ModLocation
+                                -> FilePath -- filenm
+                                -> Set UnitId -- ^ Dependencies
+                                -> Stream IO RawCmmGroup a -- linted_cmm_stream
+                                -> IO a
+
+
+            , backendPostHscPipeline :: TPipelineClass TPhase m
+                                     => PipeEnv
+                                     -> HscEnv
+                                     -> Maybe ModLocation
+                                     -> FilePath
+                                     -> m (Maybe FilePath)
+
             , backendNormalSuccessorPhase :: Phase
 
 
