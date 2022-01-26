@@ -1,108 +1,35 @@
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE RankNTypes #-}
+
 -- | What constitutes a back end for code generation 
 
-module GHC.Driver.BackendRecord
-{-
-   ( Backend -- export LegacyBackend(..) with legacyBackendUnsafe
-   , platformDefaultBackend
-   , platformNcgSupported
-   , backendProducesObject
-   , backendNeedsLink
-   , backendGeneratesCode
-   , backendInterfaceHasCodegen
-   , backendRetainsAllBindings
-
-   , backendCDefs
-   , backendWantsClangTools
-
-   , backendNeedsFullWays
-
-   , ncgBackend
-   , llvmBackend
-   , viaCBackend
-   , interpreterBackend
-   , noBackend
-
-   , useNcgPrimitives
-   , useLlvmPrimitives
-
-
-   , backendSupportsSwitch
-
-   , backendValidityOfCExportStatic
-   , backendValidityOfCImport
-
-   , backendSupportsStopC
-
-   , supportsHpc
-   , needsPlatformNcgSupport
-
-   , backendUnregisterisedOnly
-   , canReplaceViaC
-   , canBeReplacedByViaC
-   , backendDescription
-
-   , backendForcesOptimization0
-   , backendSplitsProcPoints
-
-   , backendSpecialModuleSource
-
-   , backendWantsBreakpointTicks
-
-   , backendSupportsEmbeddedBlobs
-
-   , backendSupportsSimd
-   , backendNoSimdMessage
-
-   , backendSptIsDynamic
-
-   , backendInhibitsInterfaceWriting
-
-   , backendIgnoresSpecialise
-
-   , backendWantsInterfaceFile
-
-   , backendNormalSuccessorPhase
-
-   , backendPipelineOutput
-
-   , backendPipeline, PipelineName(..)
-
-   , LlvmVersion(..)
-
+module {-GHC.Driver.-}BackendRecord
+   ( Backend'(..)
    )
--}
 
 where
 
-import GHC.Driver.Backend.Rep
---import GHC.Driver.Phases
-import GHC.IO.Handle
---import GHC.IO.Handle.Text
-import GHC.Prelude
+import Data.Set(Set)
+import GHC.Cmm
+import GHC.Data.Stream
+import GHC.Driver.Env.Types
+import GHC.Driver.Pipeline.Phases
 import GHC.Platform
-import GHC.CmmToLlvm.LlvmVersion
 import GHC.Utils.Error
-import GHC.Utils.Exception
 import GHC.Utils.Logger
-import GHC.Utils.Misc
-import GHC.Utils.Outputable
 import GHC.Driver.Pipeline.Monad
-import GHC.Utils.CliOption
+import GHC.Driver.Session
+import GHC.Unit.Module
 
 import GHC.Driver.Phases
 
-import System.Process
 
--- | We really hope to get rid of this, but...
-
-data PipelineName = ViaCPipeline | NCGPipeline | LLVMPipeline | NoPipeline
-
-data Backend dflags =
+data Backend' dflags =
     Backend { 
             -- | An informal description of the back end, for use in
             -- issuing warning messages *only*.  If code depends on
             -- what's in the string, you deserve what happens to you.
-            , backendDescription :: !String
+              backendDescription :: !String
 
 
             -- | This flag tells the compiler driver whether the back
@@ -279,7 +206,8 @@ data Backend dflags =
 
             ----------------- code generation and compiler driver
 
-            , backendCodeOutput :: Logger
+            , backendCodeOutput :: forall a .
+                                   Logger
                                 -> dflags
                                 -> Module -- this_mode
                                 -> ModLocation
@@ -289,7 +217,8 @@ data Backend dflags =
                                 -> IO a
 
 
-            , backendPostHscPipeline :: TPipelineClass TPhase m
+            , backendPostHscPipeline :: forall m .
+                                        TPipelineClass TPhase m
                                      => PipeEnv
                                      -> HscEnv
                                      -> Maybe ModLocation
