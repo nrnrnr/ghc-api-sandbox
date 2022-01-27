@@ -179,8 +179,14 @@ data Backend' dflags =
 
 
 
-            , backendValidityOfCExportStatic :: !Validity
+            -- | Does this back end support foreign import of C functions?
+            -- ("Supports" means "does not barf on," so -fno-code supports
+            -- foreign C imports.)
             , backendValidityOfCImport :: !Validity
+
+
+            -- | Does this back end support foreign export of C functions?
+            , backendValidityOfCExport :: !Validity
 
 
 
