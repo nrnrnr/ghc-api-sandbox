@@ -51,7 +51,6 @@ Notes:
 -}
 
 
-No overarching design philosophy; this is what emerged
 
 
 
@@ -256,17 +255,20 @@ data Backend' dflags =
 
             ----------------- code generation and compiler driver
 
+            -- | Generate code and write it to a file.
             , backendCodeOutput :: forall a .
                                    Logger
                                 -> dflags
-                                -> Module -- this_mode
+                                -> Module -- ^ module being compiled
                                 -> ModLocation
-                                -> FilePath -- filenm
-                                -> Set UnitId -- ^ Dependencies
-                                -> Stream IO RawCmmGroup a -- linted_cmm_stream
+                                -> FilePath -- ^ Where to write output
+                                -> Set UnitId -- ^ dependencies
+                                -> Stream IO RawCmmGroup a -- results from `StgToCmm`
                                 -> IO a
 
 
+            -- | Tell the compiler driver what else has to be run
+            -- after code output.
             , backendPostHscPipeline :: forall m .
                                         TPipelineClass TPhase m
                                      => PipeEnv
@@ -275,9 +277,16 @@ data Backend' dflags =
                                      -> FilePath
                                      -> m (Maybe FilePath)
 
+            -- | In some of the compiler pipelines(?), when compiling
+            -- Haskell source (as opposed to a boot file or a sig
+            -- file, What phase to run after one of the backend code
+            -- generators has run.
+
             , backendNormalSuccessorPhase :: Phase
 
 
 
 
+
             }
+

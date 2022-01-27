@@ -1,6 +1,6 @@
 module Main where
 
-import Data.List (intercalate)
+import Data.List (intercalate, sort)
 import Data.Map (Map, insertWith, toList, empty)
 
 import GHC.Driver.Backend
@@ -8,7 +8,7 @@ import GHC.Driver.Backend.Rep
 import GHC.Driver.Pipeline.Monad
 import GHC.Utils.Error
 
-isValid :: Validity -> Bool
+isValid :: Validity' a -> Bool
 isValid IsValid = True
 isValid (NotValid _) = False
 
@@ -19,6 +19,7 @@ isNoOutputFile _ = False
 main :: IO ()
 main = do
   mapM_ putPair $ filter interesting $ toList info
+  mapM_ putTT predicates
  where info = foldl addPredicate empty predicates
        interesting (key, btt) =
            case length (primal btt) `compare` length (complement btt) of
@@ -35,6 +36,15 @@ main = do
          putStrLn $ "  complement: " ++ commas (complement btt)
 
        commas ss = intercalate ", " ss
+
+
+       putTT (name, p) = do
+           putStr name
+           putStr ": "
+           putStrLn $ commas $ reverse $ sort $ map (short . p . snd) backends
+         where short True = "T"
+               short False = "F"
+                                     
 
 data BTT = BTT { primal :: [String] -- functions with that table
                , complement :: [String] -- functions with the complement
@@ -70,28 +80,29 @@ predicates :: [(String, Backend -> Bool)]
 predicates = 
    [ ("backendWritesFiles", backendWritesFiles)
    , ("backendGeneratesCode", backendGeneratesCode)
-   , ("backendRetainsAllBindings", backendRetainsAllBindings)
+   , ("backendWantsGlobalBindings", backendWantsGlobalBindings)
 
    , ("backendWantsClangTools", backendWantsClangTools)
 
    , ("backendNeedsFullWays", backendNeedsFullWays)
 
-   , ("backendWantsNcgPrimitives", backendWantsNcgPrimitives)
-   , ("backendWantsLlvmPrimitives", backendWantsLlvmPrimitives)
+   , ("ncgFlavor . backendPrimitiveImplementation", ncgFlavor . backendPrimitiveImplementation)
+   , ("llvmFlavor . backendPrimitiveImplementation", llvmFlavor . backendPrimitiveImplementation)
+
 
 
    , ("backendHasNativeSwitch", backendHasNativeSwitch)
 
-   , ("isValid . backendValidityOfCExportStatic", isValid . backendValidityOfCExportStatic)
+   , ("isValid . backendValidityOfCExport", isValid . backendValidityOfCExport)
    , ("isValid . backendValidityOfCImport", isValid . backendValidityOfCImport)
    , ("isNoOutputFile . backendPipelineOutput", isNoOutputFile . backendPipelineOutput)
 
-   , ("backendSupportsStopC", backendSupportsStopC)
+   , ("backendGeneratesHc", backendGeneratesHc)
 
    , ("backendSupportsHpc", backendSupportsHpc)
    , ("backendNeedsPlatformNcgSupport", backendNeedsPlatformNcgSupport)
 
-   , ("backendUnregisterisedOnly", backendUnregisterisedOnly)
+   , ("backendUnregisterisedAbiOnly", backendUnregisterisedAbiOnly)
    , ("backendSwappableWithViaC", backendSwappableWithViaC)
 
    , ("backendForcesOptimization0", backendForcesOptimization0)
@@ -102,7 +113,7 @@ predicates =
 
    , ("backendSupportsEmbeddedBlobs", backendSupportsEmbeddedBlobs)
 
-   , ("backendSupportsSimd", backendSupportsSimd)
+   , ("isValid . backendSimdValidity", isValid . backendSimdValidity)
 
    , ("backendSptIsDynamic", backendSptIsDynamic)
 
@@ -112,4 +123,7 @@ predicates =
 
 
    ]
-
+ where ncgFlavor NcgPrimitives = True
+       ncgFlavor _ = False
+       llvmFlavor LlvmPrimitives = True
+       llvmFlavor _ = False
