@@ -24,6 +24,37 @@ import GHC.Unit.Module
 
 import GHC.Driver.Phases
 
+{-
+
+Notes:
+
+  - Abstraction does three things:
+      
+      * Bits that tell the compiler driver what `DynFlags` the back
+        end is compatible with, or how to adjust `DynFlags`.
+
+      * Bits that give the compiler driver little jobs to do.  For
+        example, there's a field that tells the compiler driver, "if
+        you're using this back end, then these are the command-line
+        flags you should add to any invocation of the C compiler."
+
+      * A very few functions that do that actual work of a back end:
+        primarily the code-output function and the post-back-end
+        pipeline.
+
+
+
+  - This datatype hasn't really been "designed"; it's what emerged from a
+    refactoring of older code.  The only design criterion was "make it
+    crystal clear what has to be done to add a new back end."
+
+-}
+
+
+No overarching design philosophy; this is what emerged
+
+
+
 -- | A `Backend` contains functions that expect `DynFlags`, but `DynFlags`
 -- include a field of type `Backend`.  This impasse is resolved elsewhere
 -- by the equation `Backend = Backend' DynFlags`.
