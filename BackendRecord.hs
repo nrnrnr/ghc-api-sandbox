@@ -5,6 +5,7 @@
 
 module {-GHC.Driver.-}BackendRecord
    ( Backend'(..)
+   , PrimitiveImplementation(..)
    )
 
 where
@@ -23,13 +24,24 @@ import GHC.Unit.Module
 
 import GHC.Driver.Phases
 
+-- | A `Backend` contains functions that expect `DynFlags`, but `DynFlags`
+-- include a field of type `Backend`.  This impasse is resolved elsewhere
+-- by the equation `Backend = Backend' DynFlags`.
+--
+-- If you need to define a `Backend`, start with the `prototypeBackend` in
+-- module `GHC.Driver.Backends`.
+
+data PrimitiveImplementation
+    = LlvmPrimitives
+    | NcgPrimitives
+    | GenericPrimitives
 
 data Backend' dflags =
     Backend { 
             -- | An informal description of the back end, for use in
             -- issuing warning messages *only*.  If code depends on
             -- what's in the string, you deserve what happens to you.
-              backendDescription :: !String
+              backendDescription :: String
 
 
             -- | This flag tells the compiler driver whether the back
@@ -79,10 +91,11 @@ data Backend' dflags =
             -- into a decision tree with jump tables at the leaves.
             , backendHasNativeSwitch :: !Bool
 
-            -- | The next two flags control the implementations of
-            -- some primitive operations in GHC.StgToCmm.Prim.
-            , backendWantsNcgPrimitives :: !Bool
-            , backendWantsLlvmPrimitives :: !Bool
+            -- | Certain primitives have multiple implementations,
+            -- depending on the capabilities of the back end.  This field
+            -- signals to module `GHC.StgToCmm.Prim` what implementations
+            -- to use with this back end.
+            , backendPrimitiveImplementation :: !PrimitiveImplementation
 
 
             -- | When `IsValid`, the back end is compatible with vector instructions.
