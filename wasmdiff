@@ -2,9 +2,9 @@
 
 t=$(mktemp)
 sandbox-run ptest "$@" > $t
-A=$(mktemp unoptimized.XXXXXX)
-B=$(mktemp optimized.XXXXXX)
-C=$(mktemp peephole.XXXXXX)
+A=$(mktemp -p /tmp unoptimized.XXXXXX)
+B=$(mktemp -p /tmp optimized.XXXXXX)
+C=$(mktemp -p /tmp peephole.XXXXXX)
 
 function strip {
   sed -E '/[Oo]ptimized|[Pp]eephole/s/.*/-------------------/'
