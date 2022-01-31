@@ -16,6 +16,8 @@ import Control.Monad
 import Control.Monad.IO.Class
 
 import GHC.Wasm.ControlFlow.OfCmm
+import qualified GHC.Wasm.ControlFlow.OfCmm as Opt
+
 import GHC.Wasm.ControlFlow
 
 import GHC.Cmm.Dominators
@@ -155,6 +157,23 @@ stgify summary guts = do
 
 ----------------------------------------------------------------
 
+showCmm, showWasm, showOptWasm, showPaths, showCmmResults, showWasmResults :: Bool
+showPeephole, showPeepholeResults, showCollapse :: Bool
+showOptWasm = True
+
+showCmm = True
+showWasm = True
+
+showPaths = False
+
+showCmmResults = True && False
+showWasmResults = True && False
+
+showPeephole = True
+showPeepholeResults = True && False
+
+showCollapse = True
+
 slurpCmm :: HscEnv -> FilePath -> IO (CmmGroup)
 slurpCmm hsc_env filename = runHsc hsc_env $ do
     let dflags   = hsc_dflags hsc_env
@@ -191,7 +210,7 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
           let r = reducibility (graphWithDominators graph)
           printSDocLn context (PageMode True) stdout $ dotCFG blockTag (ppr entry) graph
 
-          when True $ do
+          when showCmm $ do
             putStrLn "/*********"
             pprout context $ pdoc platform h
             pprout context entry
@@ -199,15 +218,15 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
             pprout context $ pdoc platform graph
             putStrLn "*********/"
 
-          when (True && r == Reducible) $ do
-            putStrLn "/* ============= "
+          when (showWasm && r == Reducible) $ do
+            putStrLn "/* ============= Unoptimized wasm "
             let pprCode block = text "CODE:" <+> (fromMaybe (text "?") $ blockTagOO block)
                 code = structuredControl platform (\_ -> id) (\_ -> pprCode) graph
             pprout context $ pdoc platform code
-            putStrLn "============== */"
+            putStrLn "============== end unoptimized */"
             hFlush stdout
 
-          when True $ do
+          when showPaths $ do
             putStrLn "/* $$$$$$$$$$$$$ "
             putStrLn $ "  Dominators " ++
                          (if dominatorsPassAllChecks graph then "pass" else "FAIL") ++
@@ -221,7 +240,7 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
             putStrLn "$$$$$$$$$$$$$$ */"
             hFlush stdout
 
-          when True $ do 
+          when showCmmResults $ do 
             let (results, ios) = unzip $ map analyzeTest $ cmmPathResults graph
             putStrLn "/* <<<<<<<<<<<<<<<<< "
             putStrLn $ "Testing CMM " ++ show (length $ cmmPathResults graph) ++ " path results"
@@ -230,7 +249,7 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
             putStrLn "   >>>>>>>>>>>>>>>>> */ "
             hFlush stdout
 
-          when (True && r == Reducible) $ do 
+          when (showWasmResults && r == Reducible) $ do 
             let (results, ios) = unzip $ map analyzeTest $ wasmPathResults platform graph
             putStrLn "/* ||||||||||||||||||| "
             putStrLn $ "Testing Wasm " ++ show (length $ wasmPathResults platform graph) ++ " path results"
@@ -239,18 +258,26 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
             putStrLn "   |||||||||||||||||| */ "
             hFlush stdout
 
-          when (True && r == Reducible) $ do
+          when (showOptWasm && r == Reducible) $ do
+            putStrLn "/* ^^^^^^^^^^^^^ Optimized wasm "
+            let pprCode block = text "CODE:" <+> (fromMaybe (text "?") $ blockTagOO block)
+                code = Opt.structuredControl platform (\_ -> id) (\_ -> pprCode) graph
+            pprout context $ pdoc platform code
+            putStrLn "^^^^^^^^^^^^^^ End optimized */"
+            hFlush stdout
+
+          when (showPeephole && r == Reducible) $ do
             putStrLn "/* Peephole: @@@@@@@@@@@@@@@@@@@@ "
             let pprCode block = text "CODE:" <+> (fromMaybe (text "?") $ blockTagOO block)
                 code = wasmPeepholeOpt $
                        structuredControl platform (\_ -> id) (\_ -> pprCode) graph
             pprout context $ pdoc platform code
-            putStrLn "@@@@@@@@@@@@@@@@@@@ */"
+            putStrLn "@@@@@@@@@@@@@@@@@@@ end peephole */"
             hFlush stdout
 
 
 
-          when (True && r == Reducible) $ do 
+          when (showPeepholeResults && r == Reducible) $ do 
             let (results, ios) = unzip $ map analyzeTest $ wasmPeepholeResults platform graph
             putStrLn "/* ##################### "
             putStrLn $ "Testing peephole " ++ show (length $ wasmPeepholeResults platform graph) ++ " path results"
@@ -258,6 +285,9 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
             sequence_ ios
             putStrLn "   ##################### */ "
             hFlush stdout
+
+          when showCollapse $ do
+            return ()
 
         resultReport results =
             if good == total then "All " ++ show total ++ " results are good"
