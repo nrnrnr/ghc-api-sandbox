@@ -99,6 +99,8 @@ data WasmStmt s e where
 
   WasmLabel :: Labeled Void -> WasmStmt s e -- pure sanity-checking play
 
+  WasmComment :: String -> WasmStmt s e
+
   WasmUnreachable :: WasmStmt s e
 
 
