@@ -1,0 +1,27 @@
+#!/bin/ksh
+
+t=$(mktemp)
+sandbox-run ptest "$@" > $t
+A=$(mktemp unoptimized.XXXXXX)
+B=$(mktemp optimized.XXXXXX)
+C=$(mktemp peephole.XXXXXX)
+
+function strip {
+  sed -E '/[Oo]ptimized|[Pp]eephole/s/.*/-------------------/'
+}
+
+sed -n '/Unoptimized wasm/,/end unoptimized/p' $t | strip > $A
+
+
+sed -n '/Optimized wasm/,/End optimized/p' $t | strip > $B
+sed -n '/Peephole:/,/end peephole/p' $t | strip > $C
+
+# cat $B; rm -f $t $A $B $C; exit 1
+
+
+diff -u $A $B
+echo
+echo
+diff -u $B $C
+
+rm -f $t $A $B $C
