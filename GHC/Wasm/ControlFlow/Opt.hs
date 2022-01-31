@@ -101,11 +101,11 @@ structuredControl platform txExpr txBlock g =
        doNode (blockLabeled (g_entry g)) emptyContext
  where
    doNode     :: CmmBlock               -> Context -> WasmStmt s e
-   nestWithin :: CmmBlock -> [CmmBlock] -> Context -> WasmStmt s e
+   nestWithin :: CmmBlock -> [CmmBlock] -> Maybe Label -> Context -> WasmStmt s e
    doBranch   :: Label -> Label         -> Context -> WasmStmt s e
 
    doNode x context = 
-       let codeForX = nestWithin x (dominatees x)
+       let codeForX = nestWithin x (dominatees x) Nothing
        in  if isHeader x then
              wasmLabeled (entryLabel x)
              WasmLoop (codeForX (LoopHeadedBy (entryLabel x) `inside` (context `withFallthrough` (entryLabel x))))
@@ -117,12 +117,17 @@ structuredControl platform txExpr txBlock g =
      -- N.B. Dominatees must be ordered with largest RP number first.
      -- (In Peterson, this is case 1 step 2, which I do before step 1)
 
-   nestWithin x (y_n:ys) context =
-       wasmLabeled ylabel WasmBlock (nestWithin x ys (BlockFollowedBy ylabel `inside` (context `withFallthrough` ylabel))) <>
-       doNode y_n context
+   nestWithin x (y_n:ys) (Just zlabel) context =
+       wasmLabeled zlabel WasmBlock $
+       nestWithin x (y_n:ys) Nothing (BlockFollowedBy zlabel `inside` context)
+   nestWithin x (y_n:ys) Nothing context =
+       nestWithin x ys (Just ylabel) (context `withFallthrough` ylabel) <> doNode y_n context
      where ylabel = entryLabel y_n
-   nestWithin x [] context =
-       -- trace ("Block " ++ showSDocUnsafe (ppr xlabel) ++ headerStatus ++ " in context " ++ showSDocUnsafe (ppr context)) $
+   nestWithin x [] (Just zlabel) context 
+     | not (generatesIf x) =
+         wasmLabeled zlabel WasmBlock $
+         nestWithin x [] Nothing (BlockFollowedBy zlabel `inside` context)
+   nestWithin x [] maybeMarks context =
        WasmLabel (Labeled xlabel undefined) <> emitBlockX context
 
      -- (In Peterson, emitBlockX combines case 1 step 6, case 2 step 1, case 2 step 3)
@@ -134,8 +139,8 @@ structuredControl platform txExpr txBlock g =
                Conditional e t f -> -- Peterson: case 1 step 5
                  wasmLabeled xlabel WasmIf
                       (txExpr xlabel e)
-                      (doBranch xlabel t (IfThenElse Nothing `inside` context))
-                      (doBranch xlabel f (IfThenElse Nothing `inside` context))
+                      (doBranch xlabel t (IfThenElse maybeMarks `inside` context))
+                      (doBranch xlabel f (IfThenElse maybeMarks `inside` context))
                TerminalFlow -> WasmReturn
                   -- Peterson: case 1 step 6, case 2 steps 2 and 3
                Switch e range targets default' ->
@@ -151,6 +156,8 @@ structuredControl platform txExpr txBlock g =
            xlabel = entryLabel x
            -- headerStatus = if isHeader xlabel then " (HEADER)" else " (not header)"
 
+   generatesIf x = case flowLeaving platform x of Conditional {} -> True
+                                                  _ -> False
 
    -- In Peterson, `doBranch` implements case 2 (and part of case 1)
    doBranch from to context =
@@ -233,11 +240,9 @@ structuredControl platform txExpr txBlock g =
 
    index'' _ [] = panic "destination label not in context"
    index'' label (frame : context)
-       | matches label frame = 0
+       | label `matchesFrame` frame = 0
        | otherwise = 1 + index label context
-     where matches label (BlockFollowedBy l) = label == l
-           matches label (LoopHeadedBy l) = label == l
-           matches _ _ = False
+     where
 
    trapIndex :: [ContainingSyntax] -> Int
    trapIndex [] = panic "context does not include a trap"
@@ -359,10 +364,13 @@ instance Outputable ContainingSyntax where
     ppr (BlockFollowedByTrap) = text "trap"
 
 stackHas :: [ContainingSyntax] -> Label -> Bool
-stackHas frames lbl = any (matches lbl) frames
-     where matches label (BlockFollowedBy l) = label == l
-           matches label (LoopHeadedBy l) = label == l
-           matches _ _ = False
+stackHas frames lbl = any (matchesFrame lbl) frames
 
 nodeBody :: Block n C C -> Block n O O
 nodeBody (BlockCC _first middle _last) = middle
+
+matchesFrame :: Label -> ContainingSyntax -> Bool
+matchesFrame label (BlockFollowedBy l) = label == l
+matchesFrame label (LoopHeadedBy l) = label == l
+matchesFrame label (IfThenElse (Just l)) = label == l
+matchesFrame _ _ = False
