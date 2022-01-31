@@ -55,28 +55,29 @@ data ContainingSyntax
 -- type Context = [ContainingSyntax]
 
 data Context = Context { enclosing :: [ContainingSyntax]
-                       , fallthrough :: [Label]  -- every label on the list can
-                                                 -- be reached just by "falling through"
-                                                 -- the translation
+                       , fallthrough :: Maybe Label  -- the label can
+                                                     -- be reached just by "falling through"
+                                                     -- the hole
                        }
 
 instance Outputable Context where
-  ppr c =  pprWithCommas ppr (enclosing c) <+> text "fallthrough to" <+>
-           pprWithCommas ppr (fallthrough c)
+  ppr c | Just l <- fallthrough c =
+                    pprWithCommas ppr (enclosing c) <+> text "fallthrough to" <+> ppr l
+        | otherwise = pprWithCommas ppr (enclosing c)
 
 emptyContext :: Context
-emptyContext = Context [] []
+emptyContext = Context [] Nothing
 
 inside :: ContainingSyntax -> Context -> Context
 --plusFallthrough :: Context -> Label -> Context
-withFallthrough :: Context -> [Label] -> Context
+withFallthrough :: Context -> Label -> Context
+--noFallthrough :: Context -> Context
 --wrappedFor :: Context -> Label -> Context
 --notWrapped :: Context -> Context
 
 inside frame c = c { enclosing = frame : enclosing c }
---plusFallthrough c l = c { fallthrough = l : fallthrough c }
-withFallthrough c ls = c { fallthrough = ls }
-
+withFallthrough c l = c { fallthrough = Just l }
+--noFallthrough c = c { fallthrough = Nothing }
 
 
 -- | Convert a Cmm CFG to structured control flow expressed as
@@ -107,7 +108,7 @@ structuredControl platform txExpr txBlock g =
        let codeForX = nestWithin x (dominatees x)
        in  if isHeader x then
              wasmLabeled (entryLabel x)
-             WasmLoop (codeForX (LoopHeadedBy (entryLabel x) `inside` (context `withFallthrough` [entryLabel x])))
+             WasmLoop (codeForX (LoopHeadedBy (entryLabel x) `inside` (context `withFallthrough` (entryLabel x))))
            else
              codeForX context
      where dominatees = case lastNode x of
@@ -117,7 +118,7 @@ structuredControl platform txExpr txBlock g =
      -- (In Peterson, this is case 1 step 2, which I do before step 1)
 
    nestWithin x (y_n:ys) context =
-       wasmLabeled ylabel WasmBlock (nestWithin x ys (BlockFollowedBy ylabel `inside` (context `withFallthrough` [ylabel]))) <>
+       wasmLabeled ylabel WasmBlock (nestWithin x ys (BlockFollowedBy ylabel `inside` (context `withFallthrough` ylabel))) <>
        doNode y_n context
      where ylabel = entryLabel y_n
    nestWithin x [] context =
