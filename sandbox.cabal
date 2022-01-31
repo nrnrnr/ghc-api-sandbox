@@ -70,6 +70,7 @@ executable ptest
                     GHC.Wasm.ControlFlow, GHC.Wasm.Ppr.Control,
                     GHC.Wasm.ControlFlow.Run,
                     GHC.Wasm.ControlFlow.OfCmm,
+                    GHC.Wasm.ControlFlow.Opt,
                     GHC.Wasm.ControlFlow.Paper,
                     GHC.Wasm.ControlFlow.PaperRun,
                     GHC.Cmm.Dominators.Lint,
