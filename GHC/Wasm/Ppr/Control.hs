@@ -33,6 +33,8 @@ pprStmt :: (OutputableP env s, OutputableP env e) => env -> WasmStmt s e -> SDoc
 
 pprStmt _ WasmNop = text "nop"
 
+pprStmt _ (WasmComment c) = text "/*" <+> text c <+> text "*/"
+
 pprStmt _ WasmUnreachable = text "unreachable"
 
 pprStmt env (WasmBlock (lview -> LV l body)) =
