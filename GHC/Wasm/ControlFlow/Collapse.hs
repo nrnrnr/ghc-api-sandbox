@@ -5,6 +5,7 @@
 module GHC.Wasm.ControlFlow.Collapse
   ( collapse
   , Info(..)
+  , VizMonad(..)
   )
 where
 
@@ -38,7 +39,7 @@ import GHC.Utils.Panic
 
 class (Graph gr, Monad m) => VizMonad m gr where
   initialGraph :: gr Info () -> m ()
-  splitGraphAt :: gr Info () -> Node -> m ()
+  splitGraphAt :: gr Info () -> LNode Info -> m ()
   finalGraph :: gr Info () -> m ()  
 
 
@@ -133,19 +134,16 @@ isMultiple (_:_:_) = True
 
 --consumeableEdge :: Graph gr => gr a b -> Maybe Edge
 -- hasExactlyOneNode :: Graph gr => gr a b -> Bool
-leastSplittable :: Graph gr => gr Info () -> Node
+leastSplittable :: Graph gr => gr Info () -> LNode Info
 
---hasExactlyOneNode g = case labNodes g of [_] -> True
---                                         _ -> False
---consumeableEdge = error "unimp"
-
-leastSplittable g = node $ minimumBy (compare `on` num) splittable
+leastSplittable g = lnode $ minimumBy (compare `on` num) splittable
   where splittable = filter (isMultiple . preds) $ map about $ labNodes g
-        preds (ps, _, _) = ps
-        num (_, _, rp) = rp
-        node (_, n, _) = n
-        about :: (Node, Info) -> (Adj (), Node, RPNum)
-        about (n, info) = (ps, n, rpnumber info)
+        splittable :: [(Adj (), Node, RPNum, Info)]
+        preds (ps, _, _, _) = ps
+        num (_, _, rp, _) = rp
+        lnode (_, n, _, info) = (n, info)
+        about :: (Node, Info) -> (Adj (), Node, RPNum, Info)
+        about (n, info) = (ps, n, rpnumber info, info)
           where (ps, _, _, _) = context g n
 
 --preds :: Graph gr => gr a b -> Node -> [Node]
@@ -165,9 +163,9 @@ collapse g = do initialGraph g
 
         drain g [] = do finalGraph g
                         if singletonGraph g then return g
-                        else let n = leastSplittable g
-                             in  do splitGraphAt g n
-                                    collapse $ split (leastSplittable g) g
+                        else let (n, info) = leastSplittable g
+                             in  do splitGraphAt g (n, info)
+                                    collapse $ split n g
         drain g ([]:nss) = drain g nss
         drain g ((n:ns):nss) = let (g', ns') = consumeBy n (theUniquePred n) g
                                in  drain g' (ns':ns:nss)
