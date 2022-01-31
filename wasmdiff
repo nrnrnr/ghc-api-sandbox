@@ -29,11 +29,11 @@ for i do
 
 
   if [[ $verbose = yes ]]; then
-    diff -u $A $B && echo "No differences between unoptimized and optimized"
+    diff -b -u $A $B && echo "No differences between unoptimized and optimized"
     echo
     echo
   fi
-  diff -u $B $C
+  diff -b -u $B $C
   rc=$?
 
   rm -f $t $A $B $C
