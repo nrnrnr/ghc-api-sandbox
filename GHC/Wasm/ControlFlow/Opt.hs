@@ -30,8 +30,6 @@ import GHC.Utils.Outputable (Outputable, text, (<+>), ppr
 
 import GHC.Wasm.ControlFlow
 
-type WasmControl s = WasmStmt s s
-
 -- | Abstracts the kind of control flow we understand how to convert.
 -- A block can be left unconditionally, conditionally on a predicate
 -- of type `e`, or not at all.  "Switch" style control flow is not
@@ -54,36 +52,62 @@ data ContainingSyntax
     | IfThenElse (Maybe Label)
     | BlockFollowedByTrap
 
-type Context = [ContainingSyntax]
+-- type Context = [ContainingSyntax]
+
+data Context = Context { enclosing :: [ContainingSyntax]
+                       , fallthrough :: [Label]  -- every label on the list can
+                                                 -- be reached just by "falling through"
+                                                 -- the translation
+                       }
+
+instance Outputable Context where
+  ppr c =  pprWithCommas ppr (enclosing c) <+> text "fallthrough to" <+>
+           pprWithCommas ppr (fallthrough c)
+
+emptyContext :: Context
+emptyContext = Context [] []
+
+inside :: ContainingSyntax -> Context -> Context
+--plusFallthrough :: Context -> Label -> Context
+withFallthrough :: Context -> [Label] -> Context
+--wrappedFor :: Context -> Label -> Context
+--notWrapped :: Context -> Context
+
+inside frame c = c { enclosing = frame : enclosing c }
+--plusFallthrough c l = c { fallthrough = l : fallthrough c }
+withFallthrough c ls = c { fallthrough = ls }
+
+
 
 -- | Convert a Cmm CFG to structured control flow expressed as
 -- a `WasmStmt`.
 
 paranoidFlow :: Bool -- always generate default case?
-paranoidFlow = False
+paranoidFlow = True
 
-structuredControl :: forall e s . (e ~ s) =>
+structuredControl :: forall e s .
                      Platform  -- ^ needed for offset calculation
                   -> (Label -> CmmExpr -> e) -- ^ translator for expressions
                   -> (Label -> Block CmmNode O O -> s) -- ^ translator for straight-line code
                   -> CmmGraph -- ^ CFG to be translated
-                  -> WasmControl s
+                  -> WasmStmt s e
 structuredControl platform txExpr txBlock g =
    if paranoidFlow && hasBlock isSwitchWithoutDefault g then -- see Note [Paranoid flow]
-       wasmUnlabeled WasmBlock (doNode (blockLabeled (g_entry g)) [BlockFollowedByTrap]) <>
+       wasmUnlabeled WasmBlock 
+       (doNode (blockLabeled (g_entry g)) (BlockFollowedByTrap `inside` emptyContext)) <>
        WasmUnreachable
    else
-       doNode (blockLabeled (g_entry g)) []
+       doNode (blockLabeled (g_entry g)) emptyContext
  where
-   doNode     :: CmmBlock               -> Context -> WasmControl s
-   nestWithin :: CmmBlock -> [CmmBlock] -> Context -> WasmControl s
-   doBranch   :: Label -> Label         -> Context -> WasmControl s
+   doNode     :: CmmBlock               -> Context -> WasmStmt s e
+   nestWithin :: CmmBlock -> [CmmBlock] -> Context -> WasmStmt s e
+   doBranch   :: Label -> Label         -> Context -> WasmStmt s e
 
    doNode x context = 
        let codeForX = nestWithin x (dominatees x)
        in  if isHeader x then
              wasmLabeled (entryLabel x)
-             WasmLoop (codeForX (LoopHeadedBy (entryLabel x) : context))
+             WasmLoop (codeForX (LoopHeadedBy (entryLabel x) `inside` (context `withFallthrough` [entryLabel x])))
            else
              codeForX context
      where dominatees = case lastNode x of
@@ -93,7 +117,7 @@ structuredControl platform txExpr txBlock g =
      -- (In Peterson, this is case 1 step 2, which I do before step 1)
 
    nestWithin x (y_n:ys) context =
-       wasmLabeled ylabel WasmBlock (nestWithin x ys (BlockFollowedBy ylabel : context)) <>
+       wasmLabeled ylabel WasmBlock (nestWithin x ys (BlockFollowedBy ylabel `inside` (context `withFallthrough` [ylabel]))) <>
        doNode y_n context
      where ylabel = entryLabel y_n
    nestWithin x [] context =
@@ -101,7 +125,7 @@ structuredControl platform txExpr txBlock g =
        WasmLabel (Labeled xlabel undefined) <> emitBlockX context
 
      -- (In Peterson, emitBlockX combines case 1 step 6, case 2 step 1, case 2 step 3)
-     where emitBlockX :: Context -> WasmControl s
+     where emitBlockX :: Context -> WasmStmt s e
            emitBlockX context =
              wasmLabeled xlabel WasmSlc (txBlock xlabel (nodeBody x)) <>
              case flowLeaving platform x of
@@ -109,8 +133,8 @@ structuredControl platform txExpr txBlock g =
                Conditional e t f -> -- Peterson: case 1 step 5
                  wasmLabeled xlabel WasmIf
                       (txExpr xlabel e)
-                      (doBranch xlabel t (IfThenElse Nothing : context))
-                      (doBranch xlabel f (IfThenElse Nothing : context))
+                      (doBranch xlabel t (IfThenElse Nothing `inside` context))
+                      (doBranch xlabel f (IfThenElse Nothing `inside` context))
                TerminalFlow -> WasmReturn
                   -- Peterson: case 1 step 6, case 2 steps 2 and 3
                Switch e range targets default' ->
@@ -120,20 +144,24 @@ structuredControl platform txExpr txBlock g =
                                                   (switchIndex default')
             where switchIndex :: Maybe Label -> Labeled Int
                   switchIndex Nothing = wasmUnlabeled id nothingIndex
-                  switchIndex (Just lbl) = wasmLabeled lbl id (index' lbl context)
-                  nothingIndex = if paranoidFlow then trapIndex context else 0
+                  switchIndex (Just lbl) = wasmLabeled lbl id (index' lbl (enclosing context))
+                  nothingIndex = if paranoidFlow then trapIndex (enclosing context) else 0
 
            xlabel = entryLabel x
            -- headerStatus = if isHeader xlabel then " (HEADER)" else " (not header)"
 
 
    -- In Peterson, `doBranch` implements case 2 (and part of case 1)
-   doBranch from to context 
+   doBranch from to context =
+       -- (WasmComment $ pprShow $ text "branch with fallthough" <+> pprWithCommas ppr (fallthrough context)) <> 
+       doBranch' from to context
+   doBranch' from to context 
+      | to `elem` fallthrough context = mempty -- WasmComment "eliminated branch"
       | isBackward from to = WasmContinue to i
            -- Peterson: case 1 step 4
       | isMergeLabel to = WasmExit to i
       | otherwise = doNode (blockLabeled to) context
-     where i = index' to context
+     where i = index' to (enclosing context)
 
    ---- everything else here is utility functions
 
@@ -197,17 +225,20 @@ structuredControl platform txExpr txBlock g =
    index' lbl context =
        if stackHas context lbl then index lbl context
        else panic ("destination label " ++ pprShow lbl ++
-                   " not in context " ++ pprShow (pprWithCommas ppr context))
+                   " not in context " ++ pprShow context)
 
-   index _ [] = panic "destination label not in context"
-   index label (frame : context)
+   index lbl context =
+       index'' lbl context
+
+   index'' _ [] = panic "destination label not in context"
+   index'' label (frame : context)
        | matches label frame = 0
        | otherwise = 1 + index label context
      where matches label (BlockFollowedBy l) = label == l
            matches label (LoopHeadedBy l) = label == l
            matches _ _ = False
 
-   trapIndex :: Context -> Int
+   trapIndex :: [ContainingSyntax] -> Int
    trapIndex [] = panic "context does not include a trap"
    trapIndex (BlockFollowedByTrap : _) = 0
    trapIndex (_ : context) = 1 + trapIndex context
@@ -326,7 +357,7 @@ instance Outputable ContainingSyntax where
     ppr (IfThenElse l) = text "if-then-else" <+> ppr l
     ppr (BlockFollowedByTrap) = text "trap"
 
-stackHas :: Context -> Label -> Bool
+stackHas :: [ContainingSyntax] -> Label -> Bool
 stackHas frames lbl = any (matches lbl) frames
      where matches label (BlockFollowedBy l) = label == l
            matches label (LoopHeadedBy l) = label == l

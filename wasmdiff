@@ -1,27 +1,47 @@
 #!/bin/ksh
 
-t=$(mktemp)
-sandbox-run ptest "$@" > $t
-A=$(mktemp -p /tmp unoptimized.XXXXXX)
-B=$(mktemp -p /tmp optimized.XXXXXX)
-C=$(mktemp -p /tmp peephole.XXXXXX)
+verbose=no
 
-function strip {
-  sed -E '/[Oo]ptimized|[Pp]eephole/s/.*/-------------------/'
-}
+case $1 in 
+  -v) verbose=yes ; shift ;;
+esac
 
-sed -n '/Unoptimized wasm/,/end unoptimized/p' $t | strip > $A
+for i do
 
 
-sed -n '/Optimized wasm/,/End optimized/p' $t | strip > $B
-sed -n '/Peephole:/,/end peephole/p' $t | strip > $C
+  t=$(mktemp)
+  sandbox-run ptest "$i" > $t
+  A=$(mktemp -p /tmp unoptimized.XXXXXX)
+  B=$(mktemp -p /tmp optimized.XXXXXX)
+  C=$(mktemp -p /tmp peephole.XXXXXX)
 
-# cat $B; rm -f $t $A $B $C; exit 1
+  function strip {
+    sed -E '/[Oo]ptimized|[Pp]eephole/s/.*/-------------------/'
+  }
+
+  sed -n '/Unoptimized wasm/,/end unoptimized/p' $t | strip > $A
 
 
-diff -u $A $B
-echo
-echo
-diff -u $B $C
+  sed -n '/Optimized wasm/,/End optimized/p' $t | strip > $B
+  sed -n '/Peephole:/,/end peephole/p' $t | strip > $C
 
-rm -f $t $A $B $C
+  # cat $B; rm -f $t $A $B $C; exit 1
+
+
+  if [[ $verbose = yes ]]; then
+    diff -u $A $B && echo "No differences between unoptimized and optimized"
+    echo
+    echo
+  fi
+  diff -u $B $C
+  rc=$?
+
+  rm -f $t $A $B $C
+
+  if [[ $rc -eq 0 ]]; then
+    echo "$i: No differences between optimized and peephole"
+  else
+    exit $rc
+  fi
+
+done

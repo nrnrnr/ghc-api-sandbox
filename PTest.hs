@@ -16,7 +16,7 @@ import Control.Monad
 import Control.Monad.IO.Class
 
 import GHC.Wasm.ControlFlow.OfCmm
-import qualified GHC.Wasm.ControlFlow.OfCmm as Opt
+import qualified GHC.Wasm.ControlFlow.Opt as Opt
 
 import GHC.Wasm.ControlFlow
 
