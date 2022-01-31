@@ -42,6 +42,7 @@ run (EndIf : stack) = run stack
 run (Run s : stack) = step s
   where step :: WasmStmt s e -> m ()
         step WasmNop = run stack
+        step (WasmComment _) = run stack
         step (WasmUnreachable) = fail "unreachable"
         step (WasmBlock s) = run (Run (unL s) : EndBlock : stack)
         step (WasmLoop s) = run (Run (unL s) : EndLoop (unL s) : stack)
