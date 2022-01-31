@@ -86,21 +86,19 @@ structuredControl txExpr txBlock g = doNode (blockLabeled (g_entry g)) []
 
    doNode x context = 
        let codeForX = nestWithin x (dominatees x)
-       in  if isHeader xlabel then
-             WasmLoop (codeForX (LoopHeadedBy xlabel : context))
+       in  if isHeader x then
+             WasmLoop (codeForX (LoopHeadedBy (entryLabel x) : context))
            else
              codeForX context
-     where xlabel = entryLabel x
-           dominatees = case lastNode x of
+     where dominatees = case lastNode x of
                           CmmSwitch {} -> immediateDominatees
                           _ -> filter isMergeNode . immediateDominatees
      -- N.B. Dominatees must be ordered with largest RP number first.
      -- (In Peterson, this is case 1 step 2, which I do before step 1)
 
-   nestWithin x (y:ys) context =
-       WasmBlock (nestWithin x ys (BlockFollowedBy ylabel : context)) <>
-       doNode y context
-     where ylabel = entryLabel y
+   nestWithin x (y_n : ys) context =
+     WasmBlock (nestWithin x ys (BlockFollowedBy (entryLabel y_n) : context)) <>
+     doNode y_n context
    nestWithin x [] context =
      WasmSlc (txBlock xlabel (nodeBody x)) <>
      case flowLeaving genericPlatform x of
@@ -125,12 +123,12 @@ structuredControl txExpr txBlock g = doNode (blockLabeled (g_entry g)) []
 
 
    -- In Peterson, `doBranch` implements case 2 (and part of case 1)
-   doBranch from to context 
-      | isBackward from to = WasmBr i -- continue
+   doBranch source target context 
+      | isBackward source target = WasmBr i -- continue
            -- Peterson: case 1 step 4
-      | isMergeLabel to = WasmBr i -- exit
-      | otherwise = doNode (blockLabeled to) context
-     where i = index' to context
+      | isMergeLabel target = WasmBr i -- exit
+      | otherwise = doNode (blockLabeled target) context
+     where i = index' target context
 
    ---- everything else here is utility functions
 
@@ -140,7 +138,8 @@ structuredControl txExpr txBlock g = doNode (blockLabeled (g_entry g)) []
                                     -- via forward edges only
    isMergeLabel :: Label -> Bool
    isMergeNode :: CmmBlock -> Bool
-   isHeader :: Label -> Bool -- ^ identify loop headers
+   isHeaderLabel :: Label -> Bool -- ^ identify loop headers
+   isHeader :: CmmBlock -> Bool -- ^ identify loop headers
    immediateDominatees :: CmmBlock -> [CmmBlock]
      -- ^ all nodes whose immediate dominator is the given block.
      -- They are produced with the largest RP number first,
@@ -187,12 +186,13 @@ structuredControl txExpr txBlock g = doNode (blockLabeled (g_entry g)) []
           big [_] = False
           big (_ : _ : _) = True
 
-   isHeader = \l -> setMember l headers  -- loop headers
+   isHeaderLabel = \l -> setMember l headers  -- loop headers
       where headers :: LabelSet
             headers = foldMap headersPointedTo blockmap
             headersPointedTo block =
                 setFromList [label | label <- successors block,
                                               dominates label (entryLabel block)]
+   isHeader = isHeaderLabel . entryLabel
 
    immediateDominatees x = idominatees (entryLabel x)
 
