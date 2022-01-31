@@ -4,8 +4,8 @@ module FlowTest
   , tracesMatch
   , outputTraceContinues
 
-  , wasmPathResults
-  , wasmPeepholeResults
+  , wasmResults
+
 
   )
 where
@@ -14,11 +14,9 @@ import Data.List
 
 import GHC.Cmm
 import GHC.Cmm.ControlFlow.Run
-import GHC.Platform
 import GHC.Test.CmmPaths
 import GHC.Test.ControlMonad
 import GHC.Wasm.ControlFlow
-import GHC.Wasm.ControlFlow.OfCmm
 import GHC.Wasm.ControlFlow.Run
 
 type Trace = [Event]
@@ -41,16 +39,15 @@ outputTraceContinues it = it_input it `isPrefixOf` pastEvents (it_output it)
 
 ----------------------------------------------------------------
 
-wasmPathResults :: Platform -> CmmGraph -> [InterpTest Trace]
-wasmPathResults platform g = [IT input (reverseEvents $ runWithBits (evalWasm w) (traceBits input))
+wasmResults :: CmmGraph -> WasmStmt s e -> [InterpTest Trace]
+wasmResults g w = [IT input (reverseEvents $ runWithBits (evalWasm w) (traceBits input))
                         | input <- traces ]
   where traces = eventPaths g
-        w = structuredControl platform  (\l _ -> l) (\l _ -> l) g
 
-wasmPeepholeResults :: Platform -> CmmGraph -> [InterpTest Trace]
-wasmPeepholeResults platform g =
-    [IT input (reverseEvents $ runWithBits (evalWasm w) (traceBits input))
-                        | input <- traces ]
-  where traces = eventPaths g
-        w = wasmPeepholeOpt $ structuredControl platform  (\l _ -> l) (\l _ -> l) g
+-- wasmPeepholeResults :: Platform -> CmmGraph -> [InterpTest Trace]
+-- wasmPeepholeResults platform g =
+--     [IT input (reverseEvents $ runWithBits (evalWasm w) (traceBits input))
+--                         | input <- traces ]
+--   where traces = eventPaths g
+--         w = wasmPeepholeOpt $ structuredControl platform  (\l _ -> l) (\l _ -> l) g
 

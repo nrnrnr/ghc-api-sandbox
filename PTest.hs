@@ -158,7 +158,7 @@ stgify summary guts = do
 ----------------------------------------------------------------
 
 showCmm, showWasm, showOptWasm, showPaths, showCmmResults, showWasmResults :: Bool
-showPeephole, showPeepholeResults, showCollapse :: Bool
+showPeephole, showPeepholeResults, showCollapse, showOptResults :: Bool
 showOptWasm = True
 
 showCmm = True
@@ -166,11 +166,12 @@ showWasm = True
 
 showPaths = False
 
-showCmmResults = True && False
-showWasmResults = True && False
+showCmmResults = True -- && False
+showWasmResults = True -- && False
 
 showPeephole = True
-showPeepholeResults = True && False
+showPeepholeResults = True --  && False
+showOptResults = True
 
 showCollapse = True
 
@@ -250,9 +251,9 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
             hFlush stdout
 
           when (showWasmResults && r == Reducible) $ do 
-            let (results, ios) = unzip $ map analyzeTest $ wasmPathResults platform graph
+            let (results, ios) = unzip $ map analyzeTest $ wasmPathResults 
             putStrLn "/* ||||||||||||||||||| "
-            putStrLn $ "Testing Wasm " ++ show (length $ wasmPathResults platform graph) ++ " path results"
+            putStrLn $ "Testing Wasm " ++ show (length $ wasmPathResults) ++ " path results"
             putStrLn $ "Wasm: " ++ resultReport results
             sequence_ ios
             putStrLn "   |||||||||||||||||| */ "
@@ -275,12 +276,21 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
             putStrLn "@@@@@@@@@@@@@@@@@@@ end peephole */"
             hFlush stdout
 
+          when (showOptResults && r == Reducible) $ do 
+            let (results, ios) = unzip $ map analyzeTest $ wasmOptResults
+            putStrLn "/* ##################### "
+            putStrLn $ "Testing optimized wasm " ++ show (length wasmOptResults) ++ " path results"
+            putStrLn $ "Optimized wasm: " ++ resultReport results
+            sequence_ ios
+            putStrLn "   ##################### */ "
+            hFlush stdout
+
 
 
           when (showPeepholeResults && r == Reducible) $ do 
-            let (results, ios) = unzip $ map analyzeTest $ wasmPeepholeResults platform graph
+            let (results, ios) = unzip $ map analyzeTest $ wasmPeepholeResults
             putStrLn "/* ##################### "
-            putStrLn $ "Testing peephole " ++ show (length $ wasmPeepholeResults platform graph) ++ " path results"
+            putStrLn $ "Testing peephole " ++ show (length wasmPeepholeResults) ++ " path results"
             putStrLn $ "Peep: " ++ resultReport results
             sequence_ ios
             putStrLn "   ##################### */ "
@@ -288,6 +298,10 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
 
           when showCollapse $ do
             return ()
+         where wasmOptResults = wasmResults graph (Opt.structuredControl platform const const graph)
+               wasmPathResults = wasmResults graph (structuredControl platform const const graph)
+               wasmPeepholeResults = wasmResults graph (wasmPeepholeOpt $ structuredControl platform const const graph)
+
 
         resultReport results =
             if good == total then "All " ++ show total ++ " results are good"
@@ -315,10 +329,13 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
                 badIndex k [] (_:_) = show k ++ " (input runs out first)"
                 badIndex k (_:_) [] = show k ++ " (output runs out first)"
 
+        
+
 data TestResult = Good | Bad
   deriving Eq
 
   
+
 
 
 blockLabeled :: NonLocal n => GenCmmGraph n -> Label -> Block n C C
