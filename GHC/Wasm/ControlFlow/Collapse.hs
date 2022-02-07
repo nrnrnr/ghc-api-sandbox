@@ -44,10 +44,10 @@ class (Graph gr, Monad m) => VizMonad m gr where
 
 
 
-data Info = I { unsplitLabels :: LabelSet
-              , splitLabels :: LabelSet
-              , rpnumber :: RPNum
-              }
+data Info = Info { unsplitLabels :: LabelSet
+                 , splitLabels :: LabelSet
+                 , rpnumber :: RPNum
+                 }
 
 -- mapMinus :: IsMap map => map a -> KeyOf map -> map a
 -- mapMinus = flip mapDelete
