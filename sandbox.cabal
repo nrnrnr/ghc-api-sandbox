@@ -84,7 +84,7 @@ executable ptest
                     GHC.Test.CmmPaths
                     GHC.Cmm.ControlFlow.Run
                     GHC.Wasm.ControlFlow.Collapse
-                    -- GHC.Cmm.Collapse
+                    GHC.Cmm.Collapse
                     GHC.Wasm.Paper
                     GHC.Data.Graph.Inductive
                     GHC.Data.Graph.Inductive.PatriciaTree
