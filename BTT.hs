@@ -3,8 +3,7 @@ module Main where
 import Data.List (intercalate, sort)
 import Data.Map (Map, insertWith, toList, empty)
 
-import GHC.Driver.Backend
-import GHC.Driver.Backend.Rep
+import GHC.Driver.Backend.Legacy
 import GHC.Driver.Pipeline.Monad
 import GHC.Utils.Error
 
