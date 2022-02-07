@@ -108,25 +108,27 @@ structuredControl platform txExpr txBlock g =
        let codeForX = nestWithin x (dominatees x) Nothing
        in  if isHeader x then
              wasmLabeled (entryLabel x)
-             WasmLoop (codeForX (LoopHeadedBy (entryLabel x) `inside` (context `withFallthrough` (entryLabel x))))
+             WasmLoop (codeForX context')
            else
              codeForX context
      where dominatees = case lastNode x of
                           CmmSwitch {} -> immediateDominatees
                           _ -> filter isMergeNode . immediateDominatees
+           context' = LoopHeadedBy (entryLabel x) `inside`
+                        (context `withFallthrough` (entryLabel x))
      -- N.B. Dominatees must be ordered with largest RP number first.
      -- (In Peterson, this is case 1 step 2, which I do before step 1)
 
    nestWithin x (y_n:ys) (Just zlabel) context =
-       wasmLabeled zlabel WasmBlock $
-       nestWithin x (y_n:ys) Nothing (BlockFollowedBy zlabel `inside` context)
+       wasmLabeled zlabel WasmBlock $ nestWithin x (y_n:ys) Nothing context'
+     where context' = BlockFollowedBy zlabel `inside` context
    nestWithin x (y_n:ys) Nothing context =
        nestWithin x ys (Just ylabel) (context `withFallthrough` ylabel) <> doNode y_n context
      where ylabel = entryLabel y_n
    nestWithin x [] (Just zlabel) context 
      | not (generatesIf x) =
-         wasmLabeled zlabel WasmBlock $
-         nestWithin x [] Nothing (BlockFollowedBy zlabel `inside` context)
+         wasmLabeled zlabel WasmBlock (nestWithin x [] Nothing context')
+     where context' = BlockFollowedBy zlabel `inside` context
    nestWithin x [] maybeMarks context =
        WasmLabel (Labeled xlabel undefined) <> emitBlockX context
 
