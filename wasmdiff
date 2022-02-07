@@ -29,6 +29,7 @@ for i do
 
 
   if [[ $verbose = yes ]]; then
+    echo "$i has $(grep '^ *if' $A | wc -l) if statements"
     diff -b -u $A $B && echo "No differences between unoptimized and optimized"
     echo
     echo
@@ -41,7 +42,9 @@ for i do
   if [[ $rc -eq 0 ]]; then
     echo "$i: No differences between optimized and peephole"
   else
-    exit $rc
+    if [[ $verbose = no ]]; then
+      exit $rc
+    fi
   fi
 
 done
