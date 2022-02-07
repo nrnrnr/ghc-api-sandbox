@@ -66,25 +66,29 @@ executable ptest
     main-is:          PTest.hs
 
     -- Modules included in this executable, other than Main.
-    other-modules:  GHC.Cmm.Dominators, DotCfg, SCode,
-                    GHC.Wasm.ControlFlow, GHC.Wasm.Ppr.Control,
-                    GHC.Wasm.ControlFlow.Run,
-                    GHC.Wasm.ControlFlow.OfCmm,
-                    GHC.Wasm.ControlFlow.Opt,
-                    GHC.Wasm.ControlFlow.Paper,
-                    GHC.Wasm.ControlFlow.PaperRun,
-                    GHC.Cmm.Dominators.Lint,
-                    GHC.Cmm.Reducibility,
-                    GHC.Test.ControlMonad, GHC.Cmm.LoopInfo,
-                    GHC.Test.ControlMonad.QC,
-                    GHC.Test.CmmPaths,
-                    GHC.Cmm.ControlFlow.Run,
-                    GHC.Wasm.ControlFlow.Collapse,
-                    -- GHC.Cmm.Collapse,
-                    GHC.Wasm.Paper,
-                    GHC.Data.Graph.Inductive,
-                    GHC.Data.Graph.Inductive.PatriciaTree,
-                    FlowTest,
+    other-modules:  GHC.Cmm.Dominators
+                    DotCfg
+                    SCode
+                    GHC.Wasm.ControlFlow
+                    GHC.Wasm.Ppr.Control
+                    GHC.Wasm.ControlFlow.Run
+                    GHC.Wasm.ControlFlow.OfCmm
+                    GHC.Wasm.ControlFlow.Opt
+                    GHC.Wasm.ControlFlow.Paper
+                    GHC.Wasm.ControlFlow.PaperRun
+                    GHC.Cmm.Dominators.Lint
+                    GHC.Cmm.Reducibility
+                    GHC.Test.ControlMonad
+                    GHC.Cmm.LoopInfo
+                    GHC.Test.ControlMonad.QC
+                    GHC.Test.CmmPaths
+                    GHC.Cmm.ControlFlow.Run
+                    GHC.Wasm.ControlFlow.Collapse
+                    -- GHC.Cmm.Collapse
+                    GHC.Wasm.Paper
+                    GHC.Data.Graph.Inductive
+                    GHC.Data.Graph.Inductive.PatriciaTree
+                    FlowTest
                     StgToCmmLite
 
     -- LANGUAGE extensions used by modules in this package.
