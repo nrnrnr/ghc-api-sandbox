@@ -40,7 +40,7 @@ import GHC.Utils.Panic
 class (Graph gr, Monad m) => VizMonad m gr where
   initialGraph :: gr Info () -> m ()
   splitGraphAt :: gr Info () -> LNode Info -> m ()
-  finalGraph :: gr Info () -> m ()  
+  finalGraph :: gr Info () -> m ()
 
 
 
@@ -51,7 +51,7 @@ data Info = Info { unsplitLabels :: LabelSet
 
 -- mapMinus :: IsMap map => map a -> KeyOf map -> map a
 -- mapMinus = flip mapDelete
--- 
+--
 -- setMap :: IsSet set => (ElemOf set -> ElemOf set) -> set -> set
 -- setMap f = setFoldl (\mapped a -> setInsert (f a) mapped) setEmpty
 
@@ -72,7 +72,7 @@ forceMatch node g = case match node g of (Just c, g') -> (c, g')
 -- predecessor
 
    -- ^ `consumeBy v u g` returns the graph that results when node v is
-   -- consumed by node u in graph g.  Both v and u are replaced with a new node u' 
+   -- consumed by node u in graph g.  Both v and u are replaced with a new node u'
    -- with these properties:
    --    LABELS(u') = LABELS(u) `union` LABELS(v)
    --    SUCC(u') = SUCC(u) `union` SUCC(v) - { u }
@@ -102,7 +102,7 @@ consumeBy toNode fromNode g =
 consumeBy' :: DynGraph gr => Node -> Node -> gr Info () -> gr Info ()
 consumeBy' toNode fromNode g =
     assert (toPreds == [((), fromNode)]) $
-    context & g''    
+    context & g''
   where ((toPreds, _, to, toSuccs), g') = forceMatch toNode g
         ((fromPreds, _, from, fromSuccs), g'') = forceMatch toNode g'
         info = from { unsplitLabels = unsplitLabels from `setUnion` unsplitLabels to
@@ -114,7 +114,7 @@ consumeBy' toNode fromNode g =
                   , info
                   , delete ((), fromNode) toSuccs ++ fromSuccs
                   )
--}    
+-}
 
 split :: DynGraph gr => Node -> gr Info b -> gr Info b
 split node g = assert (isMultiple preds) $ foldl addReplica g' newNodes
@@ -126,7 +126,7 @@ split node g = assert (isMultiple preds) $ foldl addReplica g' newNodes
         (_, maxNode) = nodeRange g
         addReplica g (pred, node) = ([pred], node, info', succs) & g
 
-                                  
+
 isMultiple :: [a] -> Bool
 isMultiple [] = False
 isMultiple [_] = False
@@ -172,14 +172,14 @@ collapse g = do initialGraph g
            where theUniquePred n
                      | ([(_, p)], _, _, _) <- context g n = p
                      | otherwise = panic "node claimed to have a unique predecessor; doesn't"
-                   
+
 
 
 -- singleton :: [a] -> Bool
 -- singleton [_] = True
 -- singleton _ = False
 
-{- 
+{-
 
 I'd like to implement an algorithm on the following species of directed graph:
 
@@ -193,7 +193,7 @@ My purely functional data structures are rusty, and I'm having trouble thinking 
 The key operation I need is *consumption* of one node by another:
 
  1. When `u` points to `v` and `u` is the *only* node that points to `v` (that is, `u` is the unique predecessor of `v`, `u` *consumes* `v`.  This is basically a merge operation.  Let us say functionally that `u` is replaced by `u'` such that
-    
+
       - In the new graph, LABELS(u') = LABELS(u) ∪ LABELS(v)
       - SUCC(u') = SUCC(u) `union` SUCC(v) - { u }
       - RPNUM(u') = RPNUM(u) `min` RPNUM(v)
@@ -210,4 +210,3 @@ In addition, I need to be able to implement these other operations:
  5. *Split* a node that has multiple predecessors.  That means make one copy for each predecessor.  In the new graph, each predecessor points to its unique copy.  Each copy has the same `LABELS`, `SUCC`, and `RPNUM` as the original.
 
 -}
-
