@@ -12,9 +12,7 @@
 
 module StgToCmmLite ( codeGen ) where
 
-import GHC.Driver.Session
-
-import GHC.StgToCmm.Prof (initInfoTableProv, initCostCentres, ldvEnter)
+import GHC.StgToCmm.Prof (initCostCentres, ldvEnter)
 import GHC.StgToCmm.Monad
 import GHC.StgToCmm.Env
 import GHC.StgToCmm.Bind
@@ -22,6 +20,7 @@ import GHC.StgToCmm.DataCon
 import GHC.StgToCmm.Layout
 import GHC.StgToCmm.Utils
 import GHC.StgToCmm.Closure
+import GHC.StgToCmm.Config
 import GHC.StgToCmm.Hpc
 import GHC.StgToCmm.Ticky
 import GHC.StgToCmm.Types (ModuleLFInfos)
@@ -43,7 +42,7 @@ import GHC.Types.Basic
 import GHC.Types.Var.Set ( isEmptyDVarSet )
 import GHC.Types.Unique.FM
 import GHC.Types.Name.Env
-import GHC.Types.ForeignStubs
+--import GHC.Types.ForeignStubs
 
 import GHC.Core.DataCon
 import GHC.Core.TyCon
@@ -55,6 +54,7 @@ import GHC.Utils.Error
 import GHC.Utils.Outputable
 import GHC.Utils.Panic.Plain
 import GHC.Utils.Logger
+import GHC.Utils.TmpFs
 
 import GHC.Data.Stream
 import GHC.Data.OrdList
@@ -62,49 +62,41 @@ import GHC.Types.Unique.Map
 
 import Control.Monad (when,void, forM_)
 import GHC.Utils.Misc
-import Data.Maybe
+--import Data.Maybe
 import Data.IORef
-
-data CodeGenState = CodeGenState { codegen_used_info :: !(OrdList CmmInfoTable)
-                                 , codegen_state :: !CgState }
+import qualified Data.ByteString as BS
+import System.IO.Unsafe
 
 
 codeGen :: Logger
-        -> DynFlags
-        -> Module
+        -> TmpFs
+        -> StgToCmmConfig
         -> InfoTableProvMap
         -> [TyCon]
         -> CollectedCCs                -- (Local/global) cost-centres needing declaring/registering.
         -> [CgStgTopBinding]           -- Bindings to convert
         -> HpcInfo
-        -> Stream IO CmmGroup (CStub, ModuleLFInfos)       -- Output as a stream, so codegen can
+        -> Stream IO CmmGroup ModuleLFInfos       -- Output as a stream, so codegen can
                                        -- be interleaved with output
 
-codeGen logger dflags this_mod ip_map@(InfoTableProvMap { provDC = UniqMap denv }) data_tycons
+codeGen logger tmpfs cfg (InfoTableProvMap { provDC = UniqMap denv }) data_tycons
         cost_centre_info stg_binds hpc_info
   = do  {     -- cg: run the code generator, and yield the resulting CmmGroup
               -- Using an IORef to store the state is a bit crude, but otherwise
               -- we would need to add a state monad layer which regresses
               -- allocations by 0.5-2%.
-        ; cgref <- liftIO $ initC >>= \s -> newIORef (CodeGenState mempty s)
+        ; cgref <- liftIO $ initC >>= \s -> newIORef s
         ; let cg :: FCode a -> Stream IO CmmGroup a
               cg fcode = do
                 (a, cmm) <- liftIO . withTimingSilent logger (text "STG -> Cmm") (`seq` ()) $ do
-                         CodeGenState ts st <- readIORef cgref
-                         let (a,st') = runC dflags this_mod st (getCmm fcode)
+                         st <- readIORef cgref
+                         let fstate = initFCodeState $ stgToCmmPlatform cfg
+                         let (a,st') = runC cfg fstate st (getCmm fcode)
 
                          -- NB. stub-out cgs_tops and cgs_stmts.  This fixes
                          -- a big space leak.  DO NOT REMOVE!
                          -- This is observed by the #3294 test
-                         let !used_info
-                                | gopt Opt_InfoTableMap dflags = toOL (mapMaybe topInfoTable (snd a)) `mappend` ts
-                                | otherwise = mempty
-                         writeIORef cgref $!
-                                    CodeGenState used_info
-                                      (st'{ cgs_tops = nilOL,
-                                            cgs_stmts = mkNop
-                                          })
-
+                         writeIORef cgref $! (st'{ cgs_tops = nilOL, cgs_stmts = mkNop })
                          return a
                 yield cmm
                 return a
@@ -113,9 +105,9 @@ codeGen logger dflags this_mod ip_map@(InfoTableProvMap { provDC = UniqMap denv 
                -- FIRST.  This is because when -split-objs is on we need to
                -- combine this block with its initialisation routines; see
                -- Note [pipeline-split-init].
-        ; cg (mkModuleInit cost_centre_info this_mod hpc_info)
+        ; cg (mkModuleInit cost_centre_info (stgToCmmThisModule cfg) hpc_info)
 
-        ; mapM_ (cg . cgTopBinding logger dflags) stg_binds
+        ; mapM_ (cg . cgTopBinding logger tmpfs cfg) stg_binds
                 -- Put datatype_stuff after code_stuff, because the
                 -- datatype closure table (for enumeration types) to
                 -- (say) PrelBase_True_closure, which is defined in
@@ -132,55 +124,38 @@ codeGen logger dflags this_mod ip_map@(InfoTableProvMap { provDC = UniqMap denv 
 
         -- Emit special info tables for everything used in this module
         -- This will only do something if  `-fdistinct-info-tables` is turned on.
-        ; mapM_ (\(dc, ns) -> forM_ ns $ \(k, _ss) -> cg (cgDataCon (UsageSite this_mod k) dc)) (nonDetEltsUFM denv)
+        ; mapM_ (\(dc, ns) -> forM_ ns $ \(k, _ss) -> cg (cgDataCon (UsageSite (stgToCmmThisModule cfg) k) dc)) (nonDetEltsUFM denv)
 
         ; final_state <- liftIO (readIORef cgref)
-        ; let cg_id_infos = cgs_binds . codegen_state $ final_state
-              used_info = fromOL . codegen_used_info $ final_state
-
-        ; !foreign_stub <- cg (initInfoTableProv used_info ip_map this_mod)
-
-          -- See Note [Conveying CAF-info and LFInfo between modules] in
-          -- GHC.StgToCmm.Types
+        ; let cg_id_infos = cgs_binds final_state
         ; let extractInfo info = (name, lf)
                 where
                   !name = idName (cg_id info)
                   !lf = cg_lf info
 
               !generatedInfo
-                | gopt Opt_OmitInterfacePragmas dflags
+                | stgToCmmOmitIfPragmas cfg
                 = emptyNameEnv
                 | otherwise
                 = mkNameEnv (Prelude.map extractInfo (nonDetEltsUFM cg_id_infos))
 
-        ; return (foreign_stub, generatedInfo)
+        ; return generatedInfo
         }
 
 ---------------------------------------------------------------
 --      Top-level bindings
 ---------------------------------------------------------------
-
-{- 'cgTopBinding' is only used for top-level bindings, since they need
-to be allocated statically (not in the heap) and need to be labelled.
-No unboxed bindings can happen at top level.
-
-In the code below, the static bindings are accumulated in the
-@MkCgState@, and transferred into the ``statics'' slot by @forkStatics@.
-This is so that we can write the top level processing in a compositional
-style, with the increasing static environment being plumbed as a state
-variable. -}
-
-cgTopBinding :: Logger -> DynFlags -> CgStgTopBinding -> FCode ()
-cgTopBinding _logger dflags = \case
+cgTopBinding :: Logger -> TmpFs -> StgToCmmConfig -> CgStgTopBinding -> FCode ()
+cgTopBinding logger tmpfs cfg = \case
     StgTopLifted (StgNonRec id rhs) -> do
-        let (info, fcode) = cgTopRhs dflags NonRecursive id rhs
+        let (info, fcode) = cgTopRhs cfg NonRecursive id rhs
         fcode
         addBindC info
 
     StgTopLifted (StgRec pairs) -> do
         let (bndrs, rhss) = unzip pairs
         let pairs' = zip bndrs rhss
-            r = unzipWith (cgTopRhs dflags Recursive) pairs'
+            r = unzipWith (cgTopRhs cfg Recursive) pairs'
             (infos, fcodes) = unzip r
         addBindsC infos
         sequence_ fcodes
@@ -188,24 +163,35 @@ cgTopBinding _logger dflags = \case
     StgTopStringLit id str -> do
         let label = mkBytesLabel (idName id)
         -- emit either a CmmString literal or dump the string in a file and emit a
-        -- CmmFileEmbed literal.
+        -- CmmFileEmbed literal.  If binary blobs aren't supported,
+        -- the threshold in `cfg` will be 0.
         -- See Note [Embedding large binary blobs] in GHC.CmmToAsm.Ppr
-        let (lit,decl) = mkByteStringCLit label str
+        let bin_blob_threshold = stgToCmmBinBlobThresh cfg
+            isSmall  = fromIntegral (BS.length str) <= bin_blob_threshold
+            asString = bin_blob_threshold == 0 || isSmall
+
+            (lit,decl) = if asString
+              then mkByteStringCLit label str
+              else mkFileEmbedLit label $ unsafePerformIO $ do
+                     bFile <- newTempName logger tmpfs (stgToCmmTmpDir cfg) TFL_CurrentModule ".dat"
+                     BS.writeFile bFile str
+                     return bFile
         emitDecl decl
-        addBindC (litIdInfo (targetPlatform dflags) id mkLFStringLit lit)
+        addBindC (litIdInfo (stgToCmmPlatform cfg) id mkLFStringLit lit)
 
 
-cgTopRhs :: DynFlags -> RecFlag -> Id -> CgStgRhs -> (CgIdInfo, FCode ())
+cgTopRhs :: StgToCmmConfig -> RecFlag -> Id -> CgStgRhs -> (CgIdInfo, FCode ())
         -- The Id is passed along for setting up a binding...
 
-cgTopRhs dflags _rec bndr (StgRhsCon _cc con mn _ts args)
-  = cgTopRhsCon dflags bndr con mn (assertNonVoidStgArgs args)
+cgTopRhs cfg _rec bndr (StgRhsCon _cc con mn _ts args)
+  = cgTopRhsCon cfg bndr con mn (assertNonVoidStgArgs args)
       -- con args are always non-void,
       -- see Note [Post-unarisation invariants] in GHC.Stg.Unarise
 
-cgTopRhs dflags rec bndr (StgRhsClosure fvs cc upd_flag args body)
+cgTopRhs cfg rec bndr (StgRhsClosure fvs cc upd_flag args body)
   = assert (isEmptyDVarSet fvs)    -- There should be no free variables
-    cgTopRhsClosure (targetPlatform dflags) rec bndr cc upd_flag args body
+    cgTopRhsClosure (stgToCmmPlatform cfg) rec bndr cc upd_flag args body
+
 
 
 ---------------------------------------------------------------

@@ -10,13 +10,15 @@ import Data.List hiding (foldl)
 import DotCfg
 
 import FlowTest
-import GHC.Test.ControlMonad 
+import GHC.Test.ControlMonad
 
 import Control.Monad
 import Control.Monad.IO.Class
 
 import GHC.Wasm.ControlFlow.OfCmm
 import qualified GHC.Wasm.ControlFlow.Opt as Opt
+
+import GHC.Driver.Config.StgToCmm (initStgToCmmConfig)
 
 import GHC.Wasm.ControlFlow
 
@@ -117,14 +119,16 @@ dumpSummary context summ = do
   stg <- stgify summ guts
   logger <- getLogger
   let infotable = emptyInfoTableProvMap
-  let tycons = []
-  let ccs = emptyCollectedCCs
-  let stg' = depSortWithAnnotStgPgm (ms_mod summ) stg
-  let hpcinfo = emptyHpcInfo False
-  (groups, (_stub, _infos)) <-
+      tycons = []
+      ccs = emptyCollectedCCs
+      stg' = depSortWithAnnotStgPgm (ms_mod summ) stg
+      hpcinfo = emptyHpcInfo False
+      tmpfs = hsc_tmpfs env
+      stg_to_cmm dflags mod = codeGen logger tmpfs (initStgToCmmConfig dflags mod)
+  (groups, _infos) <-
       liftIO $
       collectAll $
-      codeGen logger dflags (ms_mod summ) infotable tycons ccs stg' hpcinfo
+      stg_to_cmm dflags (ms_mod summ) infotable tycons ccs stg' hpcinfo
   liftIO $ mapM_ (dumpGroup context (targetPlatform dflags)) groups
 
 frontend :: DynFlags -> HscEnv -> ModSummary -> IO ModGuts
@@ -234,14 +238,14 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
                          " lint checks"
             mapM_ (putStrLn . showSDocUnsafe . ppr) (dominatorsFailures graph)
             putStrLn "   PATHS:"
-            let --pprLabel = blockTag . blockLabeled graph 
+            let --pprLabel = blockTag . blockLabeled graph
                 pprLabel = ppr
                 pprPath' lbls = hcat $ intersperse (text " -> ") (map pprLabel (reverse lbls))
             pprout context $ vcat (map pprPath' $ shortPaths' graph)
             putStrLn "$$$$$$$$$$$$$$ */"
             hFlush stdout
 
-          when showCmmResults $ do 
+          when showCmmResults $ do
             let (results, ios) = unzip $ map analyzeTest $ cmmPathResults graph
             putStrLn "/* <<<<<<<<<<<<<<<<< "
             putStrLn $ "Testing CMM " ++ show (length $ cmmPathResults graph) ++ " path results"
@@ -250,8 +254,8 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
             putStrLn "   >>>>>>>>>>>>>>>>> */ "
             hFlush stdout
 
-          when (showWasmResults && r == Reducible) $ do 
-            let (results, ios) = unzip $ map analyzeTest $ wasmPathResults 
+          when (showWasmResults && r == Reducible) $ do
+            let (results, ios) = unzip $ map analyzeTest $ wasmPathResults
             putStrLn "/* ||||||||||||||||||| "
             putStrLn $ "Testing Wasm " ++ show (length $ wasmPathResults) ++ " path results"
             putStrLn $ "Wasm: " ++ resultReport results
@@ -276,7 +280,7 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
             putStrLn "@@@@@@@@@@@@@@@@@@@ end peephole */"
             hFlush stdout
 
-          when (showOptResults && r == Reducible) $ do 
+          when (showOptResults && r == Reducible) $ do
             let (results, ios) = unzip $ map analyzeTest $ wasmOptResults
             putStrLn "/* ##################### "
             putStrLn $ "Testing optimized wasm " ++ show (length wasmOptResults) ++ " path results"
@@ -287,7 +291,7 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
 
 
 
-          when (showPeepholeResults && r == Reducible) $ do 
+          when (showPeepholeResults && r == Reducible) $ do
             let (results, ios) = unzip $ map analyzeTest $ wasmPeepholeResults
             putStrLn "/* ##################### "
             putStrLn $ "Testing peephole " ++ show (length wasmPeepholeResults) ++ " path results"
@@ -329,12 +333,12 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
                 badIndex k [] (_:_) = show k ++ " (input runs out first)"
                 badIndex k (_:_) [] = show k ++ " (output runs out first)"
 
-        
+
 
 data TestResult = Good | Bad
   deriving Eq
 
-  
+
 
 
 
@@ -382,13 +386,13 @@ dumpCmm context summ = do
             putStr "global registers" >> pprout context registers
             pprout context $ pdoc platform graph
             putStrLn "*********/"
-                     
+
 -}
 
 
 pprout :: Outputable a => SDocContext -> a -> IO ()
 pprout context = printSDocLn context (PageMode True) stdout . ppr
-            
+
 
 {- What is outputable?
 
@@ -402,7 +406,7 @@ What goes into a CmmGroup:
 
   - CmmGroup == GenCmmGroup CmmStatics CmmTopInfo CmmGraph
 
-  - 
+  -
 
   - CmmGraph in OutputableP Platform
 
@@ -432,7 +436,7 @@ blockTagOO b =
         extend (AssignedLabel r l) (CmmUnsafeForeignCall (ForeignTarget e _) _ _)
            | CmmLit (CmmLabel l') <- e = Called l'
            | CmmReg r' <- e,  r == r' = Called l
-        extend summary _ = summary                          
+        extend summary _ = summary
         notTick (CmmTick _) = False
         notTick _ = True
 
@@ -452,4 +456,3 @@ collectAll = gobble . runStream
           gobble (Effect e) = e >>= gobble
           gobble (Yield a s) = do (as, b) <- gobble s
                                   return (a:as, b)
-
