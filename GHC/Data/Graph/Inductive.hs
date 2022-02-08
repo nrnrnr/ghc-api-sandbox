@@ -1,4 +1,4 @@
-module GHC.Data.Graph.Inductive 
+module GHC.Data.Graph.Inductive
   (
     -- * General Type Defintions
     -- ** Node and Edge Types
@@ -95,7 +95,7 @@ class Graph gr where
   matchAny g = case labNodes g of
                  (v,_):_ | (Just c,g') <- match v g -> (c,g')
                  _ -> error "Match Exception, Empty Graph"
-                     
+
 
   -- | The number of 'Node's in a 'Graph'.
   noNodes   :: gr a b -> Int

@@ -52,8 +52,8 @@ trace _ a = a
 -- | =Dominator sets
 
 -- | An efficient data structure for representing dominator sets.
--- For details, see Cooper, Keith D., Timothy J. Harvey, and Ken Kennedy. 
--- "A simple, fast dominance algorithm." 2006. 
+-- For details, see Cooper, Keith D., Timothy J. Harvey, and Ken Kennedy.
+-- "A simple, fast dominance algorithm." 2006.
 --
 -- Also relevant: Loukas Georgiadis, Renato F. Werneck, Robert
 -- E. Tarjan, Spyridon Triantafyllis, and David I. August (January 2006).  "Finding
@@ -98,8 +98,8 @@ dominatorsMember _   EntryNode = False
 
 {- [Note Dominator Memership]
 
-Technically AllNodes is the universal set, of which every 
-label should be a member.  But if a block B has dominator set 
+Technically AllNodes is the universal set, of which every
+label should be a member.  But if a block B has dominator set
 is AllNodes, the dominator relation is vacuous: block B is
 dominated by block A when all paths from the entry to B
 include A.  But _there are no such paths_.  In such a situation
@@ -169,7 +169,7 @@ strip (NotChanged a) = a
 -- | =Dominator computation via dataflow analysis
 
 -- The code below uses Cmm.Dataflow (Hoopl) to calculate
--- the dominators of each node.  
+-- the dominators of each node.
 
 domlattice :: DataflowLattice DominatorSet'
 domlattice = DataflowLattice AllNodes' intersectDomSet
@@ -189,7 +189,7 @@ graphWithDominators, graphWithDominators', graphWithDominators'', graphWithDomin
        => GenCmmGraph node
        -> GraphWithDominators node
 
--- XXX question for reviewer: should the graph returned be the original graph 
+-- XXX question for reviewer: should the graph returned be the original graph
 -- or a new graph containing only the reachable nodes?
 -- ANSWER: new graph
 
@@ -390,7 +390,7 @@ checkClimbing (lo, hi) a
 --
 -- The advantage of this approach is that when the array is updated,
 -- later nodes can profit from updates in the earlier nodes, instead
--- of having to wait for the next array-update cycle.  
+-- of having to wait for the next array-update cycle.
 
 newtype IDomArray s = IDA { unIDA :: (STUArray s Int Int) }
 idaFromList :: (Int, Int) -> [IDom] -> ST s (IDomArray s)
@@ -549,4 +549,3 @@ intersectDominatorsSlow ds ds' = commonPrefix (revDoms ds []) (revDoms ds' []) E
         commonPrefix (a:as) (b:bs) doms
             | a == b = commonPrefix as bs (ImmediateDominator a doms)
         commonPrefix _ _ doms = doms
-
