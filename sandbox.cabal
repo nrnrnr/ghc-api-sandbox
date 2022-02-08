@@ -90,6 +90,7 @@ executable ptest
                     GHC.Data.Graph.Inductive.PatriciaTree
                     FlowTest
                     StgToCmmLite
+                    DotGraph
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:

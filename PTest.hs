@@ -8,6 +8,9 @@ import Data.Maybe
 import Data.List hiding (foldl)
 
 import DotCfg
+import DotGraph
+
+import GHC.Cmm.Collapse
 
 import FlowTest
 import GHC.Test.ControlMonad
@@ -301,7 +304,19 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
             hFlush stdout
 
           when showCollapse $ do
-            return ()
+            let dump selected graph =
+                    printSDocLn context (PageMode True) stdout $
+                    dotGraph labelTag selected graph
+                emitTransitions [] = panic "no transitions"
+                emitTransitions [(penultimate, (k, _info), last)] =
+                   dump (Just k) penultimate >> dump Nothing last
+                emitTransitions ((graph, (k, _info), _next) : txs) =
+                   dump (Just k) graph >> emitTransitions txs
+                labelTag lbl =
+                    blockTag $ mapFindWithDefault (panic "block") lbl $ graphMap graph
+            emitTransitions $ collapseCmm graph
+
+
          where wasmOptResults = wasmResults graph (Opt.structuredControl platform const const graph)
                wasmPathResults = wasmResults graph (structuredControl platform const const graph)
                wasmPeepholeResults = wasmResults graph (wasmPeepholeOpt $ structuredControl platform const const graph)
