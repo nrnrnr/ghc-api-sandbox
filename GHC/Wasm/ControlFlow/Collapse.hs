@@ -85,7 +85,7 @@ consumeBy toNode fromNode g =
     assert (toPreds == [((), fromNode)]) $
     (newGraph, newCandidates)
   where ((toPreds, _, to, toSuccs), g') = forceMatch toNode g
-        ((fromPreds, _, from, fromSuccs), g'') = forceMatch toNode g'
+        ((fromPreds, _, from, fromSuccs), g'') = forceMatch fromNode g'
         info = from { unsplitLabels = unsplitLabels from `setUnion` unsplitLabels to
                     , splitLabels   = splitLabels   from `setUnion` splitLabels   to
                     , rpnumber = rpnumber from `min` rpnumber to
