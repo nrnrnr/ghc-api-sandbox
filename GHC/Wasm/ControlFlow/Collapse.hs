@@ -1,14 +1,19 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module GHC.Wasm.ControlFlow.Collapse
   ( collapse
   , Info(..)
   , VizMonad(..)
+  , infoViz
   )
 where
 
+import Prelude hiding ((<>))
+
+import DotGraph
 import Control.Exception
 import GHC.Data.Graph.Inductive
 import GHC.Cmm.Dominators (RPNum)
@@ -30,12 +35,18 @@ import GHC.Cmm.Dataflow.Label
 --import GHC.Platform
 --
 import GHC.Utils.Panic
---import GHC.Utils.Outputable (Outputable, text, (<+>), ppr
+import GHC.Utils.Outputable -- (Outputable, text, (<+>), ppr
 --                            , showSDocUnsafe
 --                            , pprWithCommas
 --                            )
 --
 --
+--import System.IO.Unsafe
+--import System.IO
+--import Debug.Trace
+
+trace :: String -> b -> b
+trace _ b = b
 
 class (Graph gr, Monad m) => VizMonad m gr where
   initialGraph :: gr Info () -> m ()
@@ -64,9 +75,18 @@ singlePred gr n
     | ([_], _, _, _) <- context gr n = True
     | otherwise = False
 
-forceMatch :: Graph gr => Node -> gr a b -> (Context a b, gr a b)
+forceMatch :: Graph gr => Node -> gr Info b -> (Context Info b, gr Info b)
 forceMatch node g = case match node g of (Just c, g') -> (c, g')
-                                         _ -> panic "missing node"
+                                         _ -> panicDump node g
+
+panicDump :: Graph gr => Node -> gr Info b -> any
+panicDump k g =
+  trace (showSDocUnsafe $
+         text "/* matching node " <+> int k <+> text "*/"  $$
+              dotGraph infoViz (Just k) g) $
+  panic "missing node, really"
+
+
 
 -- | Merge two nodes, return new graph plus list of nodes that newly have a single
 -- predecessor
@@ -82,8 +102,11 @@ forceMatch node g = case match node g of (Just c, g') -> (c, g')
 
 consumeBy :: DynGraph gr => Node -> Node -> gr Info () -> (gr Info (), [Node])
 consumeBy toNode fromNode g =
+    traceDoc ("/* target" <+> int toNode <+> "source" <+> int fromNode <+> "*/" $$
+              dotGraph infoViz (Just toNode) g) $
     assert (toPreds == [((), fromNode)]) $
-    (newGraph, newCandidates)
+    (traceDoc ("/* new graph */" $$ vizGraph newGraph) newGraph,
+     trace ("/* new candidates " ++ show newCandidates ++ " */") newCandidates)
   where ((toPreds, _, to, toSuccs), g') = forceMatch toNode g
         ((fromPreds, _, from, fromSuccs), g'') = forceMatch fromNode g'
         info = from { unsplitLabels = unsplitLabels from `setUnion` unsplitLabels to
@@ -137,7 +160,9 @@ isMultiple (_:_:_) = True
 -- hasExactlyOneNode :: Graph gr => gr a b -> Bool
 leastSplittable :: Graph gr => gr Info () -> LNode Info
 
-leastSplittable g = lnode $ minimumBy (compare `on` num) splittable
+leastSplittable g = traceDoc ("/* search for least splittable */" $$ vizGraph g) $
+                    lnode $ minimumBy (compare `on` num) $
+                    trace ("/* splittable == " ++ show (map num splittable) ++ " */") splittable
   where splittable = filter (isMultiple . preds) $ map about $ labNodes g
         splittable :: [(Adj (), Node, RPNum, Info)]
         preds (ps, _, _, _) = ps
@@ -158,18 +183,22 @@ singletonGraph g = case labNodes g of [_] -> True
 
 collapse :: (DynGraph gr, VizMonad m gr) => gr Info () -> m (gr Info ())
 collapse g = do initialGraph g
-                drain g worklist
+                drain' g $ trace ("/* worklist is " ++ show worklist ++ " */") worklist
   where worklist :: [[Node]] -- ^ nodes with exactly one predecessor
         worklist = [filter (singlePred g) $ nodes g]
 
-        drain g [] = do finalGraph g
-                        if singletonGraph g then return g
+        drain' g work = trace ("/* draining graph, worklist " ++ show (concat work) ++ " */\n" ++
+                          showSDocUnsafe (vizGraph g)) $ drain g work
+
+        drain g [] = do if singletonGraph g then finalGraph g >> return g
                         else let (n, info) = leastSplittable g
                              in  do splitGraphAt g (n, info)
+                                    finalGraph g
                                     collapse $ split n g
         drain g ([]:nss) = drain g nss
-        drain g ((n:ns):nss) = let (g', ns') = consumeBy n (theUniquePred n) g
-                               in  drain g' (ns':ns:nss)
+        drain g ((n:ns):nss) = trace ("/* absorb " ++ show n ++ " */") $
+                               let (g', ns') = consumeBy n (theUniquePred n) g
+                               in  drain' g' (ns':ns:nss)
            where theUniquePred n
                      | ([(_, p)], _, _, _) <- context g n = p
                      | otherwise = panic "node claimed to have a unique predecessor; doesn't"
@@ -211,3 +240,13 @@ In addition, I need to be able to implement these other operations:
  5. *Split* a node that has multiple predecessors.  That means make one copy for each predecessor.  In the new graph, each predecessor points to its unique copy.  Each copy has the same `LABELS`, `SUCC`, and `RPNUM` as the original.
 
 -}
+
+
+traceDoc :: SDoc -> a -> a
+traceDoc doc a = trace (showSDocUnsafe doc) a
+
+infoViz :: LNode Info -> SDoc
+infoViz (k, info) = int k <> ":" <+> "of" <+> text (show (rpnumber info))
+
+vizGraph :: Graph gr => gr Info b -> SDoc
+vizGraph = dotGraph infoViz Nothing
