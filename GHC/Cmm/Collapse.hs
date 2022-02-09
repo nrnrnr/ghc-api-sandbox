@@ -32,7 +32,7 @@ import GHC.Wasm.ControlFlow.Collapse (Info(..), VizMonad(..), collapse)
 import GHC.Utils.Panic
 
 
-cgraphOfCmm :: CmmGraph -> CGraph
+cgraphOfCmm :: CmmGraph -> CGraph -- must avoid duplicates!
 cgraphOfCmm g = foldl' addSuccEdges (mkGraph cnodes []) blocks
    where blocks = zip [0..] $ revPostorderFrom (graphMap g) (g_entry g)
          cnodes = [(k, info block) | (k, block) <- blocks]
@@ -46,7 +46,7 @@ cgraphOfCmm g = foldl' addSuccEdges (mkGraph cnodes []) blocks
                    swap (k, block) = (entryLabel block, k)
          addSuccEdges :: CGraph -> LNode CmmBlock -> CGraph
          addSuccEdges graph (k, block) =
-             insEdges [(k, labelNumber lbl, ()) | lbl <- successors block] graph
+             insEdges [(k, labelNumber lbl, ()) | lbl <- nub $ successors block] graph
          rpnums = gwd_rpnumbering $ graphWithDominators g
          rpnum lbl = fromJust $ mapLookup lbl rpnums
 
