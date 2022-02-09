@@ -96,7 +96,7 @@ dominatorsMember _   EntryNode = False
 
 
 
-{- [Note Dominator Memership]
+{- [Note Dominator Membership]
 
 Technically AllNodes is the universal set, of which every
 label should be a member.  But if a block B has dominator set
@@ -272,7 +272,10 @@ newtype IDom = IDom { unIDom :: Int }
 instance Show IDom where
   show (IDom n) = "ID-"++show n
 
-
+-- on my little test suite, which is mostly simple graphs, here's
+-- what I learend about the number of iterations in the '' and '' forms:
+--    712 iterate array function
+--    696 iterate node transfer
 
 
 -- try them all and check consistency
