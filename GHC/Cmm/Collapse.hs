@@ -6,6 +6,7 @@
 
 module GHC.Cmm.Collapse
   ( collapseCmm
+  , Event(..)
   )
 where
 
@@ -50,43 +51,36 @@ cgraphOfCmm g = foldl' addSuccEdges (IG.mkGraph cnodes []) blocks
 
 
 type CGraph = PT.Gr Info ()
+type Node = IG.Node
 
-collapseCmm :: CmmGraph -> [(CGraph, IG.LNode Info, CGraph)]
+collapseCmm :: CmmGraph -> [Event]
 collapseCmm = unViz . collapse . cgraphOfCmm
 
-unViz :: State VS a -> [(CGraph, IG.LNode Info, CGraph)]
-unViz m = case execState m emptyVs of
-            VS { initg = Nothing, split_node = Nothing, finals = fs } -> fs
-            _ -> error "viz monad in bad state"
+unViz :: State VS a -> [Event]
+unViz m = reverse $ unVS $ execState m emptyVs
 
+
+data Event = ConsumeBy Node Node CGraph
+           | SplitAt CGraph Node
+           | Finish CGraph
 
 newtype VM a = VM { _unVM :: State VS a }
   deriving (Applicative, Functor, Monad)
 
-data VS = VS { initg :: Maybe CGraph, split_node :: Maybe (IG.LNode Info)
-             , finals :: [(CGraph, IG.LNode Info, CGraph)]
-             }
+newtype VS = VS { unVS :: [Event] }
+
+add event (VS events) = VS (event : events)
+add :: Event -> VS -> VS
+
 
 emptyVs :: VS
-emptyVs = VS Nothing Nothing []
+emptyVs = VS  []
 
 instance MonadState VS VM where
   get = VM get
   put s = VM $ put s
 
 instance VizMonad (State VS) PT.Gr where
-  initialGraph g = modify (\s -> if isNothing (initg s) then s { initg = Just g }
-                                 else error "double init")
-  splitGraphAt _g ln =
-      modify (\s -> if isJust (initg s) && isNothing (split_node s) then
-                        s { split_node = Just ln }
-                    else error "double split")
-  finalGraph g' =
-      modify (\case VS { initg = Just g, split_node = Just n, finals = fs } ->
-                        VS { initg = Nothing, split_node = Nothing
-                           , finals = (g, n, g') : fs
-                           }
-                    VS { initg = Just _, split_node = Nothing, finals = fs } ->
-                          VS { initg = Nothing, split_node = Nothing
-                            , finals = fs }
-                    _ -> error "final with no initial")
+  consumeByInGraph to from g = modify (add $ ConsumeBy to from g)
+  splitGraphAt g (k, _) = modify (add $ SplitAt g k)
+  finalGraph g = modify (add $ Finish g)

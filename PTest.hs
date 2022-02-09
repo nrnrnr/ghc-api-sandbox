@@ -311,15 +311,18 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
             let dump selected graph =
                     printSDocLn context (PageMode True) stdout $
                     dotGraph showInfo selected graph
-                emitTransitions [] = putStrLn "/* graph is collapsible */"
-                emitTransitions [(penultimate, (k, _info), last)] =
-                   dump (Just k) penultimate >> dump Nothing last
-                emitTransitions ((graph, (k, _info), _next) : txs) =
-                   dump (Just k) graph >> emitTransitions txs
+                showEvent (Finish g) =
+                    putStrLn "/* final graph: */" >> dump [] g
+                showEvent (SplitAt g k) =
+                    putStrLn "/* splitting node: */" >> dump (props k splitProps) g
+                showEvent (ConsumeBy to _from g) =
+                    putStrLn "/* absorbing node: */" >> dump (selected to) g
+                props k ps = [(k, ps)]
+                splitProps = [("peripheries", int 3), ("color", text "blue")]
                 _labelTag lbl =
                     blockTag $ mapFindWithDefault (panic "block") lbl $ graphMap graph
 
-                pprLabel = blockTag . blockLabeled graph
+                pprLabel = blockTag' empty . blockLabeled graph
 
                 showInfo :: (Int, Info) -> SDoc
                 showInfo (_, info) = unsplit `commaCat` split
@@ -335,7 +338,7 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
                            else text tag <> text ":" <+> pprLabels (setElems labels)
                        pprLabels = pprWithCommas pprLabel
 
-            emitTransitions $ collapseCmm graph
+            mapM_ showEvent $ collapseCmm graph
 
 
          where wasmOptResults = wasmResults graph (Opt.structuredControl platform const const graph)
@@ -479,8 +482,11 @@ blockTagOO b =
         nodes = blockToList b
 
 blockTag :: Block CmmNode C C -> SDoc
-blockTag b =
-  fromMaybe (hcat [ppr (entryLabel b), text ": ..."]) (blockTagOO $ blockBody b)
+blockTag = blockTag' (text ": ...")
+
+blockTag' :: SDoc -> Block CmmNode C C -> SDoc
+blockTag' suffix b =
+  fromMaybe (hcat [ppr (entryLabel b), suffix]) (blockTagOO $ blockBody b)
 
 blockBody :: Block CmmNode C C -> Block CmmNode O O
 blockBody (BlockCC _first middle _last) = middle

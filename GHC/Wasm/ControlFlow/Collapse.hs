@@ -49,7 +49,7 @@ trace :: String -> b -> b
 trace _ b = b
 
 class (Graph gr, Monad m) => VizMonad m gr where
-  initialGraph :: gr Info () -> m ()
+  consumeByInGraph :: Node -> Node -> gr Info () -> m ()
   splitGraphAt :: gr Info () -> LNode Info -> m ()
   finalGraph :: gr Info () -> m ()
 
@@ -83,7 +83,7 @@ panicDump :: Graph gr => Node -> gr Info b -> any
 panicDump k g =
   trace (showSDocUnsafe $
          text "/* matching node " <+> int k <+> text "*/"  $$
-              dotGraph infoViz (Just k) g) $
+              dotGraph infoViz (selected k) g) $
   panic "missing node, really"
 
 
@@ -103,7 +103,7 @@ panicDump k g =
 consumeBy :: DynGraph gr => Node -> Node -> gr Info () -> (gr Info (), [Node])
 consumeBy toNode fromNode g =
     traceDoc ("/* target" <+> int toNode <+> "source" <+> int fromNode <+> "*/" $$
-              dotGraph infoViz (Just toNode) g) $
+              dotGraph infoViz (selected toNode) g) $
     assert (toPreds == [((), fromNode)]) $
     (traceDoc ("/* new graph */" $$ vizGraph newGraph) newGraph,
      trace ("/* new candidates " ++ show newCandidates ++ " */") newCandidates)
@@ -182,8 +182,7 @@ singletonGraph g = case labNodes g of [_] -> True
 
 
 collapse :: (DynGraph gr, VizMonad m gr) => gr Info () -> m (gr Info ())
-collapse g = do initialGraph g
-                drain' g $ trace ("/* worklist is " ++ show worklist ++ " */") worklist
+collapse g = drain' g $ trace ("/* worklist is " ++ show worklist ++ " */") worklist
   where worklist :: [[Node]] -- ^ nodes with exactly one predecessor
         worklist = [filter (singlePred g) $ nodes g]
 
@@ -193,12 +192,12 @@ collapse g = do initialGraph g
         drain g [] = do if singletonGraph g then finalGraph g >> return g
                         else let (n, info) = leastSplittable g
                              in  do splitGraphAt g (n, info)
-                                    finalGraph g
                                     collapse $ split n g
         drain g ([]:nss) = drain g nss
         drain g ((n:ns):nss) = trace ("/* absorb " ++ show n ++ " */") $
                                let (g', ns') = consumeBy n (theUniquePred n) g
-                               in  drain' g' (ns':ns:nss)
+                               in  do consumeByInGraph n (theUniquePred n) g
+                                      drain' g' (ns':ns:nss)
            where theUniquePred n
                      | ([(_, p)], _, _, _) <- context g n = p
                      | otherwise = panic "node claimed to have a unique predecessor; doesn't"
@@ -249,4 +248,4 @@ infoViz :: LNode Info -> SDoc
 infoViz (k, info) = int k <> ":" <+> "of" <+> text (show (rpnumber info))
 
 vizGraph :: Graph gr => gr Info b -> SDoc
-vizGraph = dotGraph infoViz Nothing
+vizGraph = dotGraph infoViz noSelection
