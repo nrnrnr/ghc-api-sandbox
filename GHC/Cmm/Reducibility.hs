@@ -5,10 +5,6 @@ module GHC.Cmm.Reducibility
   , reducibility
 
   , asReducible
-
-
-  , splitAt -- temporary
-
   )
 where
 
@@ -38,6 +34,8 @@ import GHC.Cmm.Switch
 
 import GHC.Types.Unique.Supply
 
+import Debug.Trace
+
 data Reducibility = Reducible | Irreducible
 
 reducibility :: NonLocal node
@@ -60,7 +58,7 @@ asReducible :: GraphWithDominators CmmNode
             -> UniqSM (GraphWithDominators CmmNode)
 asReducible gwd = case reducibility gwd of
                     Reducible -> return gwd
-                    Irreducible -> nodeSplit gwd
+                    Irreducible -> trace "splitting" $ nodeSplit gwd >>= asReducible
 
 ----------------------------------------------------------------
 
