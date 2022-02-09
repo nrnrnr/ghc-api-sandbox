@@ -7,8 +7,6 @@ module GHC.Cmm.Reducibility
   , asReducible
 
 
-  , Node(..) -- temporary
-
   , splitAt -- temporary
 
   )
@@ -25,6 +23,7 @@ import Control.Monad.State
 
 import GHC.Utils.Panic
 
+import GHC.Base hiding (foldr)
 import GHC.Cmm
 import GHC.Cmm.BlockId
 import GHC.Cmm.Collapse
@@ -32,7 +31,8 @@ import GHC.Cmm.Dataflow
 import GHC.Cmm.Dataflow.Collections
 import GHC.Cmm.Dataflow.Block
 import GHC.Cmm.Dominators
-import GHC.Cmm.Dataflow.Graph
+import GHC.Cmm.Dataflow.Graph hiding (addBlock)
+import qualified GHC.Cmm.Dataflow.Graph as G
 import GHC.Cmm.Dataflow.Label
 import GHC.Cmm.Switch
 
@@ -62,16 +62,18 @@ asReducible gwd = case reducibility gwd of
                     Reducible -> return gwd
                     Irreducible -> nodeSplit gwd
 
+----------------------------------------------------------------
+
+
+
 nodeSplit :: GraphWithDominators CmmNode
           -> UniqSM (GraphWithDominators CmmNode)
-nodeSplit gwd = graphWithDominators <$> evalStateT (foldM (splitAt predmap) g splits) blockmap
+nodeSplit gwd =
+    graphWithDominators <$> evalStateT (foldM splitAt g splits) initial
   where g = gwd_graph gwd
+        initial :: GState
+        initial = (predecessorMap blockmap, blockmap)
         blockmap = graphMap g
-        predmap = mapFoldl addBlock mapEmpty blockmap
-          where addBlock map b =
-                    foldl (\map succ -> mapInsertWith (++) succ [entryLabel b] map)
-                          map
-                          (successors b)
         -- split lower RP numbers first, so a node is split before its successors
         splits = sortOn (gwdRPNumber gwd) $ setElems $ labelsToSplit g
 
@@ -82,32 +84,83 @@ nodeSplit gwd = graphWithDominators <$> evalStateT (foldM (splitAt predmap) g sp
   4. call asReducible again
 -}
 
-type BlockMap = LabelMap (Block CmmNode C C)
+type Predmap = LabelMap LabelSet -- each block to set of predecessor blocks
+type Blockmap = LabelMap CmmBlock
 
-type UpdateMonad a = StateT BlockMap UniqSM a
+pmAddEdge :: Label -> Label -> Predmap -> Predmap
+pmAddEdge from to = mapInsertWith setUnion to (setSingleton from)
 
-splitAt :: LabelMap [Label]
-        -> CmmGraph
+pmRemoveEdge :: Label -> Label -> Predmap -> Predmap
+pmRemoveEdge from to = mapAdjust (remove from) to
+  where remove from set = assert (setMember from set) $ setDelete from set
+
+
+predecessorMap :: Blockmap -> Predmap
+predecessorMap bm = mapFoldl addBlock mapEmpty bm
+  where addBlock map b = foldr (pmAddEdge from) map (successors b)
+          where from = entryLabel b
+
+type GState = (Predmap, Blockmap)
+
+validated :: GState -> GState
+validated s = assert (consistent s) s
+
+consistent :: GState -> Bool
+consistent (predmap, blockmap) = predmap == predecessorMap blockmap
+
+type UpdateMonad a = StateT GState UniqSM a
+
+addBlock :: CmmBlock -> GState -> GState
+addBlock block (predmap, blockmap) =
+    validated
+    ( foldr (pmAddEdge (entryLabel block)) predmap (successors block)
+    , G.addBlock block blockmap
+    )
+
+delBlock :: CmmBlock -> GState -> GState
+delBlock block (predmap, blockmap) =
+  assert (mapMember lbl predmap) $
+  assert (mapMember lbl blockmap) $
+  validated
+  ( foldr (pmRemoveEdge lbl) (mapDelete lbl predmap) (successors block)
+  , mapDelete lbl blockmap
+  )
+ where lbl = entryLabel block
+
+changeBlock :: CmmBlock -> GState -> GState
+changeBlock block = addBlock block . delBlock block
+
+getBlockmap :: Monad m => StateT GState m Blockmap
+getBlockmap = snd <$> get
+
+predecessors :: Monad m => Label -> StateT GState m LabelSet
+predecessors lbl = do predmap <- fst <$> get
+                      return $ mapFindWithDefault die lbl predmap
+  where die = panic "GHC.Cmm.Reducibility.predecessors"
+
+
+splitAt :: CmmGraph
         -> Label
         -> UpdateMonad CmmGraph
-splitAt predmap g lbl = do
+splitAt g lbl = do
     new_entry <- if g_entry g /= lbl then return $ g_entry g
                  else replicate (g_entry g)
-    mapM_ replaceIn (predecessors lbl)
-    blockmap <- get
+    preds <- predecessors lbl
+    mapM_ replaceIn $ setElems preds
+    blockmap <- getBlockmap
     return $ CmmGraph new_entry (GMany NothingO blockmap NothingO)
    where replicate :: Label -> UpdateMonad Label
-         replicate lbl = do b <- blockLabeled lbl <$> get
+         replicate lbl = do b <- blockLabeled lbl <$> getBlockmap
                             lbl' <- lift newBlockId
                             let b' = relabel lbl' b
                             modify $ addBlock b'
                             return lbl'
+         replaceIn :: Label -> UpdateMonad ()
          replaceIn plabel = do
-             b <- blockLabeled plabel <$> get
+             b <- blockLabeled plabel <$> getBlockmap
              new <- replicate lbl
-             modify $ addBlock $ replaceSuccessor lbl new b
+             modify $ changeBlock $ replaceSuccessor lbl new b
 
-         predecessors lbl = mapFindWithDefault (panic "GHC.Cmm.Reducibility") lbl predmap
 
 replaceSuccessor :: Label -> Label -> CmmBlock -> CmmBlock
 replaceSuccessor old new block = blockJoinTail head tail'
@@ -123,7 +176,7 @@ replaceSuccessor old new block = blockJoinTail head tail'
 
 
 
-blockLabeled :: Label -> BlockMap -> CmmBlock
+blockLabeled :: Label -> Blockmap -> CmmBlock
 blockLabeled = mapFindWithDefault (panic "GHC.Cmm.Reducibility")
 
 relabel :: Label -> CmmBlock -> CmmBlock
@@ -133,13 +186,14 @@ relabel lbl b = blockJoinHead (CmmEntry lbl scope) tail
 data XLabel = Original Label
             | Replica Int XLabel
   deriving (Eq, Ord)
+{-
 
 data Node = Node { label :: XLabel
                  , also :: [XLabel]
                  , xsuccessors :: [XLabel]
                  , predecessors :: [Node] -- bogus
                  }
-
+-}
 
 
 {- Note [Reducibility resources]
