@@ -86,4 +86,7 @@ instance VizMonad (State VS) PT.Gr where
                         VS { initg = Nothing, split_node = Nothing
                            , finals = (g, n, g') : fs
                            }
-                    _ -> error "final too early")
+                    VS { initg = Just _, split_node = Nothing, finals = fs } ->
+                          VS { initg = Nothing, split_node = Nothing
+                            , finals = fs }
+                    _ -> error "final with no initial")
