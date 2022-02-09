@@ -2,7 +2,10 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
+
 module Main where
+
+import Prelude hiding ((<>))
 
 import Data.Maybe
 import Data.List hiding (foldl)
@@ -11,6 +14,7 @@ import DotCfg
 import DotGraph
 
 import GHC.Cmm.Collapse
+import GHC.Wasm.ControlFlow.Collapse
 
 import FlowTest
 import GHC.Test.ControlMonad
@@ -306,14 +310,31 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
           when showCollapse $ do
             let dump selected graph =
                     printSDocLn context (PageMode True) stdout $
-                    dotGraph labelTag selected graph
-                emitTransitions [] = panic "no transitions"
+                    dotGraph showInfo selected graph
+                emitTransitions [] = putStrLn "/* graph is collapsible */"
                 emitTransitions [(penultimate, (k, _info), last)] =
                    dump (Just k) penultimate >> dump Nothing last
                 emitTransitions ((graph, (k, _info), _next) : txs) =
                    dump (Just k) graph >> emitTransitions txs
-                labelTag lbl =
+                _labelTag lbl =
                     blockTag $ mapFindWithDefault (panic "block") lbl $ graphMap graph
+
+                pprLabel = blockTag . blockLabeled graph
+
+                showInfo :: (Int, Info) -> SDoc
+                showInfo (_, info) = unsplit `commaCat` split
+                 where commaCat :: SDoc -> SDoc -> SDoc
+                       commaCat a b
+                           | isEmpty defaultSDocContext a = b
+                           | isEmpty defaultSDocContext b = a
+                           | otherwise =  a <> comma <+> b
+                       split = render "split" $ splitLabels info
+                       unsplit = pprLabels $ setElems $ unsplitLabels info
+                       render tag labels =
+                           if setNull labels then empty
+                           else text tag <> text ":" <+> pprLabels (setElems labels)
+                       pprLabels = pprWithCommas pprLabel
+
             emitTransitions $ collapseCmm graph
 
 
