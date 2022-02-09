@@ -6,6 +6,7 @@
 
 module GHC.Cmm.Collapse
   ( collapseCmm
+  , labelsToSplit
   , Event(..)
   )
 where
@@ -25,12 +26,14 @@ import GHC.Cmm.Dataflow.Label
 import GHC.Cmm.Dominators
 
 import qualified GHC.Data.Graph.Inductive.PatriciaTree as PT
-import qualified GHC.Data.Graph.Inductive as IG
+import GHC.Data.Graph.Inductive
 import GHC.Wasm.ControlFlow.Collapse (Info(..), VizMonad(..), collapse)
+
+import GHC.Utils.Panic
 
 
 cgraphOfCmm :: CmmGraph -> CGraph
-cgraphOfCmm g = foldl' addSuccEdges (IG.mkGraph cnodes []) blocks
+cgraphOfCmm g = foldl' addSuccEdges (mkGraph cnodes []) blocks
    where blocks = zip [0..] $ revPostorderFrom (graphMap g) (g_entry g)
          cnodes = [(k, info block) | (k, block) <- blocks]
           where info block = Info { unsplitLabels = setSingleton (entryLabel block)
@@ -41,9 +44,9 @@ cgraphOfCmm g = foldl' addSuccEdges (IG.mkGraph cnodes []) blocks
              where numbers :: LabelMap Int
                    numbers = mapFromList $ map swap blocks
                    swap (k, block) = (entryLabel block, k)
-         addSuccEdges :: CGraph -> IG.LNode CmmBlock -> CGraph
+         addSuccEdges :: CGraph -> LNode CmmBlock -> CGraph
          addSuccEdges graph (k, block) =
-             IG.insEdges [(k, labelNumber lbl, ()) | lbl <- successors block] graph
+             insEdges [(k, labelNumber lbl, ()) | lbl <- successors block] graph
          rpnums = gwd_rpnumbering $ graphWithDominators g
          rpnum lbl = fromJust $ mapLookup lbl rpnums
 
@@ -51,7 +54,13 @@ cgraphOfCmm g = foldl' addSuccEdges (IG.mkGraph cnodes []) blocks
 
 
 type CGraph = PT.Gr Info ()
-type Node = IG.Node
+
+labelsToSplit :: CmmGraph -> LabelSet
+labelsToSplit = unSplit . collapse . cgraphOfCmm
+  where unSplit m = getSplits $ evalState m emptyVs
+        getSplits g = case labNodes g of
+                        [(_, info)] -> splitLabels info
+                        _ -> panic "GHC.Cmm.Collapse.labelsToSplit"
 
 collapseCmm :: CmmGraph -> [Event]
 collapseCmm = unViz . collapse . cgraphOfCmm

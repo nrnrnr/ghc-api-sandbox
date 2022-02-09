@@ -27,6 +27,7 @@ import GHC.Utils.Panic
 
 import GHC.Cmm
 import GHC.Cmm.BlockId
+import GHC.Cmm.Collapse
 import GHC.Cmm.Dataflow
 import GHC.Cmm.Dataflow.Collections
 import GHC.Cmm.Dataflow.Block
@@ -55,17 +56,25 @@ reducibility gwd =
             lbl == blockname || dominatorsMember lbl (dominators blockname)
 
 
-asReducible :: NonLocal node
-            => GraphWithDominators node
-            -> UniqSM (GraphWithDominators node)
+asReducible :: GraphWithDominators CmmNode
+            -> UniqSM (GraphWithDominators CmmNode)
 asReducible gwd = case reducibility gwd of
                     Reducible -> return gwd
                     Irreducible -> nodeSplit gwd
 
-nodeSplit :: NonLocal node
-          => GraphWithDominators node
-          -> UniqSM (GraphWithDominators node)
-nodeSplit = panic "GHC.Cmm.Reducibility: nodesplit unimp" $ swallow
+nodeSplit :: GraphWithDominators CmmNode
+          -> UniqSM (GraphWithDominators CmmNode)
+nodeSplit gwd = graphWithDominators <$> evalStateT (foldM (splitAt predmap) g splits) blockmap
+  where g = gwd_graph gwd
+        blockmap = graphMap g
+        predmap = mapFoldl addBlock mapEmpty blockmap
+          where addBlock map b =
+                    foldl (\map succ -> mapInsertWith (++) succ [entryLabel b] map)
+                          map
+                          (successors b)
+        -- split lower RP numbers first, so a node is split before its successors
+        splits = sortOn (gwdRPNumber gwd) $ setElems $ labelsToSplit g
+
 {-
   1. Form shadow graph
   2. Accumulate nodes that must be split
@@ -131,15 +140,6 @@ data Node = Node { label :: XLabel
                  , predecessors :: [Node] -- bogus
                  }
 
-swallow :: Node -> Node -> Node
-swallow u v =
-    case predecessors v of
-      [u'] | label u' == label u -> u { also = label u' : also u' ++ also u
-                                      , xsuccessors = (xsuccessors u \\ [label v]) ++
-                                                      (xsuccessors v \\ [label u])
-                                      }
-                                    -- URK! successors of v get new predecessor
-      _ -> panic "swallow, bad predecessors"
 
 
 {- Note [Reducibility resources]
