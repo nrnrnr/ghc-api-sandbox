@@ -96,7 +96,8 @@ consumeBy toNode fromNode g =
                   , delete ((), fromNode) toSuccs `union` fromSuccs
                   )
         newGraph = context & g''
-        newCandidates = filter (singlePred newGraph) $ map snd (toSuccs `intersect` fromSuccs)
+        newCandidates = filter (singlePred newGraph) changedNodes
+        changedNodes = fromNode `insert` map snd (toSuccs `intersect` fromSuccs)
 
 {-
 consumeBy' :: DynGraph gr => Node -> Node -> gr Info () -> gr Info ()
