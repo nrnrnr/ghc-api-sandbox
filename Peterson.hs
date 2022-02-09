@@ -24,7 +24,7 @@ type MyBlock = CmmBlock
 
 -- | The type of code ("statements") we intend to emit.
 -- This might be a sequence of Wasm instructions.
--- Type `CodeExpr c` is the type of expressions that 
+-- Type `CodeExpr c` is the type of expressions that
 -- can appear as a condition in an `if`.
 
 class (Monoid c) => Code c where
@@ -60,7 +60,7 @@ data ControlFlow e = Unconditional Label
                    | TerminalFlow
 
 
--- | Peterson's stack.  If I can figure out how to make 
+-- | Peterson's stack.  If I can figure out how to make
 -- the code generator recursive, we can replace the stack
 -- with a data structure whose only purpose is to track
 -- the nexting level for exit statements.
@@ -106,13 +106,13 @@ structure g = doBlock (blockLabeled (g_entry g)) []
            xlabel = entryLabel x
 
    -- case 2
-   doBranch from to stack 
+   doBranch from to stack
      | isBackward from to = continue to (index to stack) <> doStack stack
           -- case 1 step 4
      | isMergeLabel to = goto to (index to stack) -- could be omitted if to on top of stack
                     <> doStack stack
      | otherwise = doBlock (blockLabeled to) stack
-           
+
    -- case 3
    doStack (PendingElse c f : stack) = ifElse <> doBranch c f (PendingEndif : stack)
    doStack (PendingEndif : stack) = ifEnd <> doStack stack
@@ -143,7 +143,7 @@ structure g = doBlock (blockLabeled (g_entry g)) []
    isMergeLabel l = setMember l mergeNodes
 
    isMergeBlock :: MyBlock -> Bool
-   isMergeBlock = isMergeLabel . entryLabel                   
+   isMergeBlock = isMergeLabel . entryLabel
 
    mergeNodes :: LabelSet
    mergeNodes = setFromList [entryLabel n | n <- rpblocks, big (preds (entryLabel n))]
@@ -195,7 +195,7 @@ structure g = doBlock (blockLabeled (g_entry g)) []
              addDominee l rpnum ((l', rpnum') : pairs)
                  | rpnum > rpnum' = (l, rpnum) : (l', rpnum') : pairs
                  | otherwise = (l', rpnum') : addDominee l rpnum pairs
-                                          
+
              rpnum lbl =
                  mapFindWithDefault (panic "label without reverse postorder number")
                                     lbl rpnums
@@ -219,7 +219,7 @@ flowLeaving b =
       CmmCall { cml_cont = Just l } -> Unconditional l
       CmmCall { cml_cont = Nothing } -> TerminalFlow
       CmmForeignCall { succ = l } -> Unconditional l
-      
+
 
 
 
