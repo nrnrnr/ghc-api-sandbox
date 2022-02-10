@@ -3,6 +3,9 @@ MKSHELL=/bin/ksh
 all:V:
 	: do nothing
 
+%.view:V: %.pdf
+	mupdf $prereq
+
 %.pdf: %.dot
 	dot-forest -o $target $prereq
 
