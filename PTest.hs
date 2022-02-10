@@ -19,6 +19,7 @@ import GHC.Wasm.ControlFlow.Collapse
 
 import FlowTest
 import GHC.Test.ControlMonad
+import GHC.Types.Unique.Supply
 
 import Control.Monad
 import Control.Monad.IO.Class
@@ -171,6 +172,8 @@ stgify summary guts = do
 
 showCmm, showWasm, showOptWasm, showPaths, showCmmResults, showWasmResults :: Bool
 showPeephole, showPeepholeResults, showCollapse, showOptResults :: Bool
+showAsReducible :: Bool
+
 showOptWasm = True
 
 showCmm = True
@@ -185,7 +188,9 @@ showPeephole = True
 showPeepholeResults = True --  && False
 showOptResults = True
 
-showCollapse = True
+showCollapse = True && False
+
+showAsReducible = True
 
 slurpCmm :: HscEnv -> FilePath -> IO (CmmGroup)
 slurpCmm hsc_env filename = runHsc hsc_env $ do
@@ -216,12 +221,13 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
                 => Platform
                 -> GenCmmDecl d h (GenCmmGraph node)
                 -> IO ()
+        printdoc = printSDocLn context (PageMode True) stdout
         decl platform (CmmData (Section sty label) d) = when False $ do
           putStrLn $ show label ++ "(" ++ show sty ++ "):"
           pprout context $ pdoc platform d
         decl platform (CmmProc h entry registers graph) = do
           let r = reducibility (graphWithDominators graph)
-          printSDocLn context (PageMode True) stdout $ dotCFG blockTag (ppr entry) graph
+          printdoc $ dotCFG blockTag (ppr entry) graph
 
           when showCmm $ do
             putStrLn "/*********"
@@ -230,6 +236,13 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
             putStr "global registers" >> pprout context registers
             pprout context $ pdoc platform graph
             putStrLn "*********/"
+
+          when showAsReducible $ do
+            putStrLn "/* RRRRRRRRRRRRRRR"
+            reduced <- runUniqSM $ asReducible (graphWithDominators graph)
+            printdoc $ dotCFG blockTag (ppr entry) (gwd_graph reduced)
+            putStrLn "   RRRRRRRRRRRRRRR */"
+
 
           when (showWasm && r == Reducible) $ do
             putStrLn "/* ============= Unoptimized wasm "
@@ -499,3 +512,9 @@ collectAll = gobble . runStream
           gobble (Effect e) = e >>= gobble
           gobble (Yield a s) = do (as, b) <- gobble s
                                   return (a:as, b)
+
+
+runUniqSM :: UniqSM a -> IO a
+runUniqSM m = do
+  us <- mkSplitUniqSupply 'g'
+  return (initUs_ us m)

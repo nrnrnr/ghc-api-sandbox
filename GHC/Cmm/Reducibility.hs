@@ -37,6 +37,7 @@ import GHC.Types.Unique.Supply
 import Debug.Trace
 
 data Reducibility = Reducible | Irreducible
+  deriving (Eq, Show)
 
 reducibility :: NonLocal node
              => GraphWithDominators node
