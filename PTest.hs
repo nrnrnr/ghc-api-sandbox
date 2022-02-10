@@ -7,6 +7,11 @@ module Main where
 
 import Prelude hiding ((<>))
 
+import Words
+
+import Crypto.Hash.SHA1
+
+import Data.ByteString.UTF8 (ByteString, fromString)
 import Data.Maybe
 import Data.List hiding (foldl)
 
@@ -32,6 +37,8 @@ import GHC.Driver.Config.StgToCmm (initStgToCmmConfig)
 import GHC.Wasm.ControlFlow
 
 import GHC.Cmm.Dominators
+
+--import Debug.Trace
 
 
 import System.FilePath as FilePath
@@ -238,10 +245,11 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
             putStrLn "*********/"
 
           when showAsReducible $ do
-            putStrLn "/* RRRRRRRRRRRRRRR"
+            putStrLn "/* Original graph: */"
+            printdoc $ dotCFG (hashTag platform) (text "ORIGINAL:" <+> ppr entry) graph
+            putStrLn "/* Converted to reducible graph: */"
             reduced <- runUniqSM $ asReducible (graphWithDominators graph)
-            printdoc $ dotCFG blockTag (ppr entry) (gwd_graph reduced)
-            putStrLn "   RRRRRRRRRRRRRRR */"
+            printdoc $ dotCFG (hashTag platform) (text "REDUCED:" <+> ppr entry) (gwd_graph reduced)
 
 
           when (showWasm && r == Reducible) $ do
@@ -498,6 +506,11 @@ blockTagOO b =
 blockTag :: Block CmmNode C C -> SDoc
 blockTag = blockTag' (text ": ...")
 
+blockTagX :: Block CmmNode C C -> SDoc
+blockTagX b = case blockTagOO $ blockBody b of
+                Just doc -> doc <> parens (ppr (entryLabel b))
+                Nothing -> ppr (entryLabel b)
+
 blockTag' :: SDoc -> Block CmmNode C C -> SDoc
 blockTag' suffix b =
   fromMaybe (hcat [ppr (entryLabel b), suffix]) (blockTagOO $ blockBody b)
@@ -518,3 +531,12 @@ runUniqSM :: UniqSM a -> IO a
 runUniqSM m = do
   us <- mkSplitUniqSupply 'g'
   return (initUs_ us m)
+
+
+hashBlock :: Platform -> CmmBlock -> ByteString
+hashBlock platform b = hash $ fromString s
+  where (_, code, _) = blockSplit b
+        s = showSDocUnsafe $ pdoc platform code
+
+hashTag :: Platform -> Block CmmNode C C -> SDoc
+hashTag platform = sep . map text . take 2 . natWords . bsNat . hashBlock platform
