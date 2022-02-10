@@ -2,10 +2,10 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module DotCfg 
+module DotCfg
   ( dotCFG
-  , reducibility
-  , Reducibility(..)
+--  , reducibility
+--  , Reducibility(..)
   )
 where
 
@@ -20,7 +20,7 @@ import GHC.Cmm.Dataflow.Collections
 import GHC.Cmm.Dataflow.Graph
 import GHC.Cmm.Dataflow.Label
 import GHC.Utils.Outputable
-import GHC.Utils.Panic
+--import GHC.Utils.Panic
 
 
 
@@ -80,6 +80,7 @@ dotCFG nodeTag title (g@CmmGraph { g_graph = GMany NothingO blockmap NothingO, g
 data Reducibility = Reducible | Irreducible
   deriving (Eq, Show)
 
+{-
 reducibility :: (NonLocal node) => GraphWithDominators node -> Reducibility
 reducibility gwd = fastReducibility rpnum dominates (graphMap $ gwd_graph gwd)
   where rpnums = gwd_rpnumbering gwd
@@ -90,7 +91,7 @@ reducibility gwd = fastReducibility rpnum dominates (graphMap $ gwd_graph gwd)
         dominates lbl blockname = lbl == blockname || hasLbl (dominators blockname)
           where hasLbl EntryNode = False
                 hasLbl (ImmediateDominator l p) = l == lbl || hasLbl p
-                                                 
+-}
 
 fastReducibility :: NonLocal node
              => (Label -> RPNum)

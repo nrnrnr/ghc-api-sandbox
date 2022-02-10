@@ -14,6 +14,7 @@ import DotCfg
 import DotGraph
 
 import GHC.Cmm.Collapse
+import GHC.Cmm.Reducibility
 import GHC.Wasm.ControlFlow.Collapse
 
 import FlowTest
