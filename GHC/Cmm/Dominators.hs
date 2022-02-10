@@ -195,7 +195,7 @@ graphWithDominators, graphWithDominators', graphWithDominators'', graphWithDomin
 
 -- plan A: use existing dataflow framework, requires slow intersection
 
-graphWithDominators' g = GraphWithDominators g (fmap unLegacy dmap) rpmap
+graphWithDominators' g = GraphWithDominators (reachable rpblocks g) (fmap unLegacy dmap) rpmap
       where dmap = analyzeCmmFwd domlattice transfer g startFacts
 
             startFacts = mkFactBase domlattice [(g_entry g, EntryNode')]
@@ -208,7 +208,7 @@ graphWithDominators' g = GraphWithDominators g (fmap unLegacy dmap) rpmap
             rpmap :: LabelMap RPNum
             rpmap = mapFromList $ zipWith kvpair rpblocks [0..]
               where kvpair block i = (entryLabel block, RPNum i)
-                    rpblocks = revPostorderFrom (graphMap g) (g_entry g)
+            rpblocks = revPostorderFrom (graphMap g) (g_entry g)
 
             nodenum :: Block node C C -> RPNum
             -- ^ reverse postorder number of each node
@@ -280,6 +280,11 @@ instance Show IDom where
 
 -- try them all and check consistency
 
+reachable :: NonLocal node => [Block node C C] -> GenCmmGraph node -> GenCmmGraph node
+reachable blocks g = g { g_graph = GMany NothingO blockmap NothingO }
+  where blockmap = mapFromList [(entryLabel b, b) | b <- blocks]
+
+
 graphWithDominators g = traceFaults "single prime" g' $
                         traceFaults "triple prime" g'' $
                         traceFaults "quad prime" g''' g''''
@@ -315,7 +320,7 @@ graphWithDominators g = traceFaults "single prime" g' $
 
 -- plan B: fixed point of functional array -> array update
 
-graphWithDominators'' g = GraphWithDominators g dmap rpmap
+graphWithDominators'' g = GraphWithDominators (reachable rpblocks g) dmap rpmap
       where rpblocks = revPostorderFrom (graphMap g) (g_entry g)
             rplabels' = map entryLabel rpblocks
             rplabels :: Array Int Label
@@ -411,7 +416,7 @@ runIda a = runSTUArray (a >>= (return . unIDA))
 
 data ThisChange = ThisChanged | ThisUnchanged
 
-graphWithDominators''' g = GraphWithDominators g dmap rpmap
+graphWithDominators''' g = GraphWithDominators (reachable rpblocks g) dmap rpmap
       where rpblocks = revPostorderFrom (graphMap g) (g_entry g)
             rplabels' = map entryLabel rpblocks
             rplabels :: Array Int Label
@@ -505,7 +510,7 @@ graphWithDominators''' g = GraphWithDominators g dmap rpmap
 
 
 -- use Lengauer-Tarjan from x86 back end
-graphWithDominators'''' g = GraphWithDominators g dmap rpmap
+graphWithDominators'''' g = GraphWithDominators (reachable rpblocks g) dmap rpmap
       where rpblocks = revPostorderFrom (graphMap g) (g_entry g)
             rplabels' = map entryLabel rpblocks
             rplabels :: Array Int Label
