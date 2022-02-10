@@ -1,5 +1,6 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module GHC.Wasm.ControlFlow.PaperRun
   ( evalWasm
@@ -26,8 +27,8 @@ import GHC.Test.ControlMonad
 
 data Frame s = EndLoop s | EndBlock | EndIf | Run s
 
-evalWasm :: ControlTestMonad m => WasmControl Label -> m ()
-run  :: forall m . ControlTestMonad m => Stack Label -> m ()
+evalWasm :: ControlTestMonad Label m => WasmControl Label -> m ()
+run  :: forall m . ControlTestMonad Label m => Stack Label -> m ()
 
 type Stack s = [Frame (WasmControl s)]
 
@@ -59,7 +60,7 @@ run (Run s : stack) = step s
                evalEnum e (bti_lo range, bti_lo range + bti_count range)
           if n >= 0 && n < length targets then exit (targets !! n) stack
           else exit default' stack
-            
+
 
         step (WasmReturn) = return ()
 
@@ -72,4 +73,3 @@ run (Run s : stack) = step s
         exit k (Run _ : stack) = exit k stack
         exit k (_ : stack) = exit (pred k) stack
         exit _ [] = fail "exit too large"
-

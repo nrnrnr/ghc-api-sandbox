@@ -1,11 +1,13 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module GHC.Wasm.ControlFlow.Run
   ( evalWasm
   )
 where
 
+import GHC.Cmm.Dataflow.Label
 import Data.Maybe
 
 import GHC.Wasm.ControlFlow
@@ -27,8 +29,8 @@ import GHC.Test.ControlMonad
 
 data Frame s = EndLoop s | EndBlock | EndIf | Run s
 
-evalWasm :: ControlTestMonad m => WasmStmt s e -> m ()
-run  :: forall s e m . ControlTestMonad m => Stack s e -> m ()
+evalWasm :: ControlTestMonad Label m => WasmStmt s e -> m ()
+run  :: forall s e m . ControlTestMonad Label m => Stack s e -> m ()
 
 type Stack s e = [Frame (WasmStmt s e)]
 
@@ -61,7 +63,7 @@ run (Run s : stack) = step s
                evalEnum (fromJust $ labelOf e) (bti_lo range, bti_lo range + bti_count range)
           if n >= 0 && n < length targets then exit (unL (targets !! n)) ExitBranch stack
           else exit (unL default') ExitBranch stack
-            
+
 
         step (WasmReturn) = return ()
 

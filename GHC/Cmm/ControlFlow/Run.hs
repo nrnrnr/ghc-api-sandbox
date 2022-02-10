@@ -1,5 +1,6 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module GHC.Cmm.ControlFlow.Run
   ( evalGraph
@@ -20,7 +21,7 @@ import GHC.Test.ControlMonad
 import GHC.Utils.Panic
 
 
-evalGraph :: forall m . ControlTestMonad m => CmmGraph -> m ()
+evalGraph :: forall m . ControlTestMonad Label m => CmmGraph -> m ()
 evalGraph g = run (g_entry g)
   where GMany NothingO blockmap NothingO = g_graph g
         run :: Label -> m ()
@@ -34,7 +35,7 @@ evalGraph g = run (g_entry g)
             CmmSwitch _ targets -> do
                       i <- evalEnum label $ extendRight $ switchTargetsRange targets
                       run $ labelIn i targets
-                
+
             CmmCall { cml_cont = Just l } -> run l
             CmmCall { cml_cont = Nothing } -> return ()
             CmmForeignCall { succ = l } -> run l

@@ -13,15 +13,16 @@ where
 import Data.List
 
 import GHC.Cmm
+import GHC.Cmm.Dataflow.Label
 import GHC.Cmm.ControlFlow.Run
 import GHC.Test.CmmPaths
 import GHC.Test.ControlMonad
 import GHC.Wasm.ControlFlow
 import GHC.Wasm.ControlFlow.Run
 
-type Trace = [Event]
+type Trace = [Event Label]
 
-data InterpTest a = IT { it_input :: a, it_output :: FinalState () }
+data InterpTest a = IT { it_input :: a, it_output :: FinalState Label () }
   deriving (Show)
 
 cmmPathResults :: CmmGraph -> [InterpTest Trace]
@@ -50,4 +51,3 @@ wasmResults g w = [IT input (reverseEvents $ runWithBits (evalWasm w) (traceBits
 --                         | input <- traces ]
 --   where traces = eventPaths g
 --         w = wasmPeepholeOpt $ structuredControl platform  (\l _ -> l) (\l _ -> l) g
-
