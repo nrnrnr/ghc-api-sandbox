@@ -31,6 +31,8 @@ import GHC.Cmm.Dataflow.Graph hiding (addBlock)
 import qualified GHC.Cmm.Dataflow.Graph as G
 import GHC.Cmm.Dataflow.Label
 import GHC.Cmm.Switch
+import GHC.Utils.Outputable
+--import GHC.Utils.Misc
 
 import GHC.Types.Unique.Supply
 
@@ -74,8 +76,9 @@ nodeSplit gwd =
         initial = (predecessorMap blockmap, blockmap)
         blockmap = graphMap g
         -- split lower RP numbers first, so a node is split before its successors
-        splits = sortOn (gwdRPNumber gwd) $ setElems $ labelsToSplit g
-
+        splits = trace ("initial predmap " ++ showPredmap (fst initial)) $
+                 sortOn (gwdRPNumber gwd) $ setElems $ showLabels $ labelsToSplit g
+        showLabels lbls = trace ("splitting nodes labeled " ++ showDoc lbls) lbls
 {-
   1. Form shadow graph
   2. Accumulate nodes that must be split
@@ -83,14 +86,21 @@ nodeSplit gwd =
   4. call asReducible again
 -}
 
+showPredmap :: Predmap -> String
+showPredmap p =
+    intercalate "," $
+    [ showDoc lbl ++ ": " ++ showDoc preds | (lbl, preds) <- mapToList p]
+
 type Predmap = LabelMap LabelSet -- each block to set of predecessor blocks
 type Blockmap = LabelMap CmmBlock
 
 pmAddEdge :: Label -> Label -> Predmap -> Predmap
-pmAddEdge from to = mapInsertWith setUnion to (setSingleton from)
+pmAddEdge from to = trace ("add edge " ++ showDoc from ++ " -> " ++ showDoc to) $
+                    mapInsertWith setUnion to (setSingleton from)
 
 pmRemoveEdge :: Label -> Label -> Predmap -> Predmap
-pmRemoveEdge from to = mapAdjust (remove from) to
+pmRemoveEdge from to = trace ("remove edge " ++ showDoc from ++ " -> " ++ showDoc to) $
+                       mapAdjust (remove from) to
   where remove from set = assert (setMember from set) $ setDelete from set
 
 
@@ -98,36 +108,101 @@ predecessorMap :: Blockmap -> Predmap
 predecessorMap bm = mapFoldl addBlock mapEmpty bm
   where addBlock map b = foldr (pmAddEdge from) map (successors b)
           where from = entryLabel b
+        pmAddEdge from to = mapInsertWith setUnion to (setSingleton from)
 
 type GState = (Predmap, Blockmap)
 
 validated :: GState -> GState
-validated s = assert (consistent s) s
+validated s =
+    if not (consistent s) then
+        trace (show $ faults s) $
+        trace ("? predmap == " ++ showPredmap (fst s)) $
+        trace ("? blockMap == " ++ showPredmap (predecessorMap (snd s))) $
+        assert (consistent s) s
+    else
+        trace ("GOOD predmap  == " ++ showPredmap (fst s)) $
+        trace ("     blockMap == " ++ showPredmap (predecessorMap (snd s))) $
+        s
 
 consistent :: GState -> Bool
-consistent (predmap, blockmap) = predmap == predecessorMap blockmap
+consistent (predmap, blockmap) =
+    all (match predmap) (mapToList pbm) &&
+    all (match pbm) (mapToList predmap)
+  where pbm = predecessorMap blockmap
+        match othermap (lbl, preds) = mapFindWithDefault setEmpty lbl othermap == preds
+
+data Inconsistency = DifferentSets { _key :: Label, _preds :: LabelSet, _blocks :: LabelSet }
+                   | NotInPredmap Label
+                   | NotInBlockmap Label
+
+showDoc :: Outputable a => a -> String
+showDoc = showSDocUnsafe . ppr
+
+instance Show Inconsistency where
+  show (NotInBlockmap lbl) = showDoc lbl ++ " not in blockmap"
+  show (NotInPredmap lbl) = showDoc lbl ++ " not in predmap"
+  show (DifferentSets lbl preds blocks) =
+      showDoc lbl ++ " has predmap " ++ showDoc preds ++ " but blockmap " ++ showDoc blocks
+
+
+faults :: GState -> [Inconsistency]
+faults (predmap, blockmap) = mapFoldlWithKey doPred missingPreds predmap
+  where doPred faults lbl predset =
+            case mapLookup lbl bpm of
+              Nothing -> NotInBlockmap lbl : faults
+              Just bps -> if bps /= predset then
+                              DifferentSets lbl predset bps : faults
+                          else
+                              faults
+        bpm = predecessorMap blockmap
+        missingPreds = map NotInPredmap $ filter (not . flip mapMember predmap) $ mapKeys bpm
+
 
 type UpdateMonad a = StateT GState UniqSM a
 
-addBlock :: CmmBlock -> GState -> GState
-addBlock block (predmap, blockmap) =
-    validated
+
+
+addSuccessorEdges :: CmmBlock -> GState -> GState
+addSuccessorEdges block (predmap, blockmap) =
     ( foldr (pmAddEdge (entryLabel block)) predmap (successors block)
-    , G.addBlock block blockmap
+    , blockmap
     )
 
-delBlock :: CmmBlock -> GState -> GState
-delBlock block (predmap, blockmap) =
+rmSuccessorEdges :: CmmBlock -> GState -> GState
+rmSuccessorEdges block (predmap, blockmap) =
+    ( foldr (pmRemoveEdge (entryLabel block)) predmap (successors block)
+    , blockmap
+    )
+
+addBlock :: CmmBlock -> GState -> GState
+addBlock block =
+    trace ("adding block " ++ showDoc (entryLabel block)) .
+    validated .
+--    liftFst (mapInsert (entryLabel block) setEmpty) .
+    addSuccessorEdges block .
+    fmap (G.addBlock block)
+
+
+_delBlock :: CmmBlock -> GState -> GState
+_delBlock block s@(predmap, blockmap) =
   assert (mapMember lbl predmap) $
   assert (mapMember lbl blockmap) $
-  validated
-  ( foldr (pmRemoveEdge lbl) (mapDelete lbl predmap) (successors block)
-  , mapDelete lbl blockmap
-  )
+  trace ("deleting block " ++ showDoc (entryLabel block)) $
+  -- validated -- invariant may be violated temporarily here
+  rmSuccessorEdges block $
+  fmap (mapDelete lbl) $
+  s
  where lbl = entryLabel block
 
-changeBlock :: CmmBlock -> GState -> GState
-changeBlock block = addBlock block . delBlock block
+changeBlock :: CmmBlock -> CmmBlock -> GState -> GState
+changeBlock old new =
+    trace ("changing block " ++ showDoc (entryLabel old) ++ ": " ++ showDoc (successors old) ++ " -> " ++ showDoc (successors new)) .
+    fmap (mapAlter update (entryLabel old)) .
+    addSuccessorEdges new .
+    rmSuccessorEdges old
+  where update Nothing = panic "no block to update"
+        update (Just _) = Just new
+
 
 getBlockmap :: Monad m => StateT GState m Blockmap
 getBlockmap = snd <$> get
@@ -152,14 +227,16 @@ splitAt g lbl = do
          replicate lbl = do b <- blockLabeled lbl <$> getBlockmap
                             lbl' <- lift newBlockId
                             let b' = relabel lbl' b
-                            modify $ addBlock b'
+                            modify $ (trace ("replicating " ++ showDoc lbl ++ " as " ++ showDoc lbl') . addBlock b')
                             return lbl'
          replaceIn :: Label -> UpdateMonad ()
          replaceIn plabel = do
              b <- blockLabeled plabel <$> getBlockmap
              new <- replicate lbl
-             modify $ changeBlock $ replaceSuccessor lbl new b
-
+             modify $ changeBlock b $
+                    trace ("replace " ++ l lbl ++ " with " ++ l new ++ " in " ++ l plabel) $
+                    replaceSuccessor lbl new b
+         l = showDoc
 
 replaceSuccessor :: Label -> Label -> CmmBlock -> CmmBlock
 replaceSuccessor old new block = blockJoinTail head tail'
