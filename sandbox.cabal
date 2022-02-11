@@ -22,7 +22,7 @@ maintainer:         nr@cs.tufts.edu
 extra-source-files: CHANGELOG.md
 
 common program-default-options
-  ghc-options: -haddock -Werror -Wincomplete-patterns -Wall -Wno-name-shadowing
+  ghc-options: -haddock -Werror -Wincomplete-patterns -Wall -Wno-name-shadowing -fno-ignore-asserts
 
 --  executable sandbox
 --      import: program-default-options

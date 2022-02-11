@@ -16,10 +16,10 @@ import Data.List hiding (splitAt)
 
 
 import Control.Monad.State
+import Control.Exception
 
 import GHC.Utils.Panic
 
-import GHC.Base hiding (foldr)
 import GHC.Cmm
 import GHC.Cmm.BlockId
 import GHC.Cmm.Collapse
