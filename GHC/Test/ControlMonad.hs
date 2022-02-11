@@ -49,8 +49,8 @@ traceBits (Switch _ (lo, hi) i : events) =
 traceBits [] = []
 
 data FinalState label a = Produced { pastEvents :: [Event label], value :: a }
-                  | Halted { pastEvents :: [Event label] }
-                  | Failed { pastEvents :: [Event label], msg :: String }
+                        | Halted { pastEvents :: [Event label] }
+                        | Failed { pastEvents :: [Event label], msg :: String }
 
 instance (Outputable label, Show a) => Show (FinalState label a) where
   show (Produced events a) = show events ++ " -> " ++ show a
