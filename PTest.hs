@@ -85,6 +85,8 @@ import qualified GHC.LanguageExtensions as LangExt
 import System.Environment ( getArgs )
 import System.IO (stdout, stderr, hPutStrLn, hFlush)
 
+import TxTest
+
 --import GHC.Wasm.ControlFlow
 import GHC.Wasm.Ppr.Control()
 
@@ -175,6 +177,7 @@ stgify summary guts = do
 
 
 
+----------------------------------------------------------------
 ----------------------------------------------------------------
 
 showCmm, showWasm, showOptWasm, showPaths, showCmmResults, showWasmResults :: Bool
@@ -374,30 +377,6 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
           where total = length results
                 good = length [r | r <- results, r == Good]
 
-        analyzeTest t =
-            if tracesMatch t then
-                (Good, putStrLn $ "EXACT: " ++ show (it_input t))
-            else if outputTraceContinues t then
-                (Good, putStrLn $ "CONTINUES: " ++ show (it_output t))
-            else
-                ( Bad
-                , do putStrLn $ "NO MATCH:"
-                     putStrLn $ "  " ++ show (it_input t)
-                     putStrLn $ "  " ++ show (it_output t)
-                     putStrLn $ "Differ in position " ++ diffPos t
-                )
-          where diffPos t = badIndex (0::Int) (it_input t) (pastEvents (it_output t))
-                badIndex k [] [] = "PERFECT MATCH at " ++ show k
-                badIndex k (e:es) (e':es')
-                   | e == e' = badIndex (k+1) es es'
-                   | otherwise = show k ++ " (" ++ show e ++ " vs " ++ show e' ++ ")"
-                badIndex k [] (_:_) = show k ++ " (input runs out first)"
-                badIndex k (_:_) [] = show k ++ " (output runs out first)"
-
-
-
-data TestResult = Good | Bad
-  deriving Eq
 
 
 
