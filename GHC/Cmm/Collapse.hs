@@ -7,7 +7,7 @@
 module GHC.Cmm.Collapse
   ( collapseCmm
   , labelsToSplit
-  , Event(..)
+  , CollapseEvent(..)
   )
 where
 
@@ -62,24 +62,24 @@ labelsToSplit = unSplit . collapse . cgraphOfCmm
                         [(_, info)] -> splitLabels info
                         _ -> panic "GHC.Cmm.Collapse.labelsToSplit"
 
-collapseCmm :: CmmGraph -> [Event]
+collapseCmm :: CmmGraph -> [CollapseEvent]
 collapseCmm = unViz . collapse . cgraphOfCmm
 
-unViz :: State VS a -> [Event]
+unViz :: State VS a -> [CollapseEvent]
 unViz m = reverse $ unVS $ execState m emptyVs
 
 
-data Event = ConsumeBy Node Node CGraph
+data CollapseEvent = ConsumeBy Node Node CGraph
            | SplitAt CGraph Node
            | Finish CGraph
 
 newtype VM a = VM { _unVM :: State VS a }
   deriving (Applicative, Functor, Monad)
 
-newtype VS = VS { unVS :: [Event] }
+newtype VS = VS { unVS :: [CollapseEvent] }
 
 add event (VS events) = VS (event : events)
-add :: Event -> VS -> VS
+add :: CollapseEvent -> VS -> VS
 
 
 emptyVs :: VS

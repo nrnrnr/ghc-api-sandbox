@@ -23,7 +23,7 @@ import GHC.Cmm.Reducibility
 import GHC.Wasm.ControlFlow.Collapse
 
 import FlowTest
-import GHC.Test.ControlMonad
+--import GHC.Test.ControlMonad
 import GHC.Types.Unique.Supply
 
 import Control.Monad
