@@ -77,6 +77,7 @@ nodeSplit gwd =
         blockmap = graphMap g
         -- split lower RP numbers first, so a node is split before its successors
         splits = trace ("initial predmap " ++ showPredmap (fst initial)) $
+                 take 1 $
                  sortOn (gwdRPNumber gwd) $ setElems $ showLabels $ labelsToSplit g
         showLabels lbls = trace ("splitting nodes labeled " ++ showDoc lbls) lbls
 {-
