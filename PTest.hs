@@ -249,7 +249,7 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
             printdoc $ dotCFG (hashTag platform) (text "ORIGINAL:" <+> ppr entry) graph
             putStrLn "/* Converted to reducible graph: */"
             reduced <- runUniqSM $ asReducible (graphWithDominators graph)
-            printdoc $ dotCFG (hashTag platform) (text "REDUCED:" <+> ppr entry) (gwd_graph reduced)
+            printdoc $ dotCFG (hashTag platform) (text "AS REDUCIBLE:" <+> ppr entry) (gwd_graph reduced)
 
 
           when (showWasm && r == Reducible) $ do
