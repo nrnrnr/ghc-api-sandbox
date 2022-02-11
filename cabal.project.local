@@ -1,0 +1,8 @@
+ignore-project: False
+
+package *
+  ghc-location: /home/nr/asterius/ghc/_build/stage1/bin/ghc
+
+program-locations
+  ghc-location: /home/nr/asterius/ghc/_build/stage1/bin/ghc
+  haddock-location: /home/nr/asterius/ghc/_build/stage1/bin/haddock
