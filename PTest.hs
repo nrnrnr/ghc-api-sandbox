@@ -198,7 +198,7 @@ showPeephole = True
 showPeepholeResults = True --  && False
 showOptResults = True
 
-showCollapse = True && False
+showCollapse = True
 
 showAsReducible = True
 
@@ -246,6 +246,7 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
             putStr "global registers" >> pprout context registers
             pprout context $ pdoc platform graph
             putStrLn "*********/"
+            hFlush stdout
 
           when showAsReducible $ do
             putStrLn "/* Original graph: */"
@@ -253,6 +254,7 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
             putStrLn "/* Converted to reducible graph: */"
             reduced <- runUniqSM $ asReducible (graphWithDominators graph)
             printdoc $ dotCFG (hashTag platform) (text "AS REDUCIBLE:" <+> ppr entry) (gwd_graph reduced)
+            hFlush stdout
 
 
           when (showWasm && r == Reducible) $ do
