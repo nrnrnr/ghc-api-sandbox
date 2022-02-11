@@ -1,5 +1,9 @@
 ignore-project: False
 
+-- package-dbs: /home/nr/asterius/ghc/_build/stage0/lib/package.conf.d
+
+with-compiler: /home/nr/asterius/ghc/_build/stage1/bin/ghc
+
 package *
   ghc-location: /home/nr/asterius/ghc/_build/stage1/bin/ghc
 
