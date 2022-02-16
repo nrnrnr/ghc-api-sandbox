@@ -180,27 +180,30 @@ stgify summary guts = do
 ----------------------------------------------------------------
 ----------------------------------------------------------------
 
-showCmm, showWasm, showOptWasm, showPaths, showCmmResults, showWasmResults :: Bool
-showPeephole, showPeepholeResults, showCollapse, showOptResults :: Bool
-showAsReducible :: Bool
+-- control over display
 
-showOptWasm = True
 
-showCmm = True
-showWasm = True
+langCmm, langWasm, langUnopt, langPeephole :: Bool
+dotViz, codeViz, pathViz, pathResults :: Bool
+nodeSplit :: Bool
+dominatorCheck :: Bool
+--hashNodes :: Bool
 
-showPaths = False
+langCmm = True
+langWasm = True
+langUnopt = False
+langPeephole = False
 
-showCmmResults = True -- && False
-showWasmResults = True -- && False
+dotViz = False
+codeViz = False
+pathViz = False
+pathResults = True
 
-showPeephole = True
-showPeepholeResults = True --  && False
-showOptResults = True
+dominatorCheck = False
 
-showCollapse = True
+nodeSplit = False
 
-showAsReducible = True
+
 
 slurpCmm :: HscEnv -> FilePath -> IO (CmmGroup)
 slurpCmm hsc_env filename = runHsc hsc_env $ do
@@ -235,86 +238,112 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
         decl platform (CmmData (Section sty label) d) = when False $ do
           putStrLn $ show label ++ "(" ++ show sty ++ "):"
           pprout context $ pdoc platform d
-        decl platform (CmmProc h entry registers graph) = do
-          let r = reducibility (graphWithDominators graph)
-          printdoc $ dotCFG blockTag (ppr entry) graph
+        decl platform (CmmProc h entry registers og_graph) = do
+          let r = reducibility (graphWithDominators og_graph)
+          gwd <- runUniqSM $ asReducible (graphWithDominators og_graph)
+          let r_graph = gwd_graph gwd -- reducible graph
+              mkResults tx = wasmResults r_graph (tx platform const const r_graph)
+              wasmOptResults = mkResults Opt.structuredControl
+              wasmUnoptResults = mkResults structuredControl
+              wasmPeepholeResults =
+                  mkResults (\p c1 c2 g -> wasmPeepholeOpt $ structuredControl p c1 c2 g)
 
-          when showCmm $ do
+
+          when (dotViz && langCmm) $ do
+            putStrLn $ "/** ORIGINAL " ++ show r ++ " **/"
+            printdoc $ dotCFG blockTag (ppr entry) og_graph
+
+          when (codeViz && langCmm) $ do
             putStrLn "/*********"
             pprout context $ pdoc platform h
             pprout context entry
             putStr "global registers" >> pprout context registers
-            pprout context $ pdoc platform graph
+            pprout context $ pdoc platform og_graph
             putStrLn "*********/"
             hFlush stdout
 
-          when showAsReducible $ do
-            putStrLn "/* Original graph: */"
-            printdoc $ dotCFG (hashTag platform) (text "ORIGINAL:" <+> ppr entry) graph
-            putStrLn "/* Converted to reducible graph: */"
-            reduced <- runUniqSM $ asReducible (graphWithDominators graph)
-            printdoc $ dotCFG (hashTag platform) (text "AS REDUCIBLE:" <+> ppr entry) (gwd_graph reduced)
-            hFlush stdout
+          when nodeSplit $ do
+            when dotViz $ do
+              putStrLn "/* Original graph: */"
+              printdoc $
+                dotCFG (hashTag platform) (text "ORIGINAL:" <+> ppr entry) og_graph
+              putStrLn "/* Converted to reducible graph: */"
+              printdoc $
+                dotCFG (hashTag platform) (text "AS REDUCIBLE:" <+> ppr entry) r_graph
+              hFlush stdout
+            when codeViz $
+              case r of
+                Irreducible -> do
+                  putStrLn "/*********"
+                  pprout context $ pdoc platform h
+                  pprout context entry
+                  putStr "global registers" >> pprout context registers
+                  pprout context $ pdoc platform r_graph
+                  putStrLn "*********/"
+                Reducible -> putStrLn "/***** original graph was reducible ****/"
 
-
-          when (showWasm && r == Reducible) $ do
+          when (codeViz && langUnopt) $ do
             putStrLn "/* ============= Unoptimized wasm "
             let pprCode block = text "CODE:" <+> (fromMaybe (text "?") $ blockTagOO block)
-                code = structuredControl platform (\_ -> id) (\_ -> pprCode) graph
+                code = structuredControl platform (\_ -> id) (\_ -> pprCode) r_graph
             pprout context $ pdoc platform code
             putStrLn "============== end unoptimized */"
             hFlush stdout
 
-          when showPaths $ do
-            putStrLn "/* $$$$$$$$$$$$$ "
+          when (codeViz && langWasm) $ do
+            putStrLn "/* ^^^^^^^^^^^^^ Optimized wasm "
+            let pprCode block = text "CODE:" <+> (fromMaybe (text "?") $ blockTagOO block)
+                code = Opt.structuredControl platform (\_ -> id) (\_ -> pprCode) r_graph
+            pprout context $ pdoc platform code
+            putStrLn "^^^^^^^^^^^^^^ End optimized */"
+            hFlush stdout
+
+          when dominatorCheck $ do
+            putStrLn "/* $-$-$-$-$-$-$ "
             putStrLn $ "  Dominators " ++
-                         (if dominatorsPassAllChecks graph then "pass" else "FAIL") ++
+                         (if dominatorsPassAllChecks r_graph then "pass" else "FAIL") ++
                          " lint checks"
-            mapM_ (putStrLn . showSDocUnsafe . ppr) (dominatorsFailures graph)
+            mapM_ (putStrLn . showSDocUnsafe . ppr) (dominatorsFailures r_graph)
+            putStrLn " $-$-$-$-$-$-$ */"
+
+          when (pathViz && langCmm) $ do
+            putStrLn "/* $$$$$$$$$$$$$ "
             putStrLn "   PATHS:"
             let --pprLabel = blockTag . blockLabeled graph
                 pprLabel = ppr
                 pprPath' lbls = hcat $ intersperse (text " -> ") (map pprLabel (reverse lbls))
-            pprout context $ vcat (map pprPath' $ shortPaths' graph)
+            pprout context $ vcat (map pprPath' $ shortPaths' r_graph)
             putStrLn "$$$$$$$$$$$$$$ */"
             hFlush stdout
 
-          when showCmmResults $ do
-            let (results, ios) = unzip $ map analyzeTest $ cmmPathResults graph
+          when (pathResults && langCmm) $ do
+            let (results, ios) = unzip $ map analyzeTest $ cmmPathResults r_graph
             putStrLn "/* <<<<<<<<<<<<<<<<< "
-            putStrLn $ "Testing CMM " ++ show (length $ cmmPathResults graph) ++ " path results"
+            putStrLn $ "Testing CMM " ++ show (length $ cmmPathResults r_graph) ++ " path results"
             putStrLn $ "CMM:  " ++ resultReport results
             sequence_ ios
             putStrLn "   >>>>>>>>>>>>>>>>> */ "
             hFlush stdout
 
-          when (showWasmResults && r == Reducible) $ do
-            let (results, ios) = unzip $ map analyzeTest $ wasmPathResults
+          when (pathResults && langUnopt) $ do
+            let (results, ios) = unzip $ map analyzeTest $ wasmUnoptResults
             putStrLn "/* ||||||||||||||||||| "
-            putStrLn $ "Testing Wasm " ++ show (length $ wasmPathResults) ++ " path results"
+            putStrLn $ "Testing unoptimized Wasm " ++ show (length $ wasmUnoptResults) ++ " path results"
             putStrLn $ "Wasm: " ++ resultReport results
             sequence_ ios
             putStrLn "   |||||||||||||||||| */ "
             hFlush stdout
 
-          when (showOptWasm && r == Reducible) $ do
-            putStrLn "/* ^^^^^^^^^^^^^ Optimized wasm "
-            let pprCode block = text "CODE:" <+> (fromMaybe (text "?") $ blockTagOO block)
-                code = Opt.structuredControl platform (\_ -> id) (\_ -> pprCode) graph
-            pprout context $ pdoc platform code
-            putStrLn "^^^^^^^^^^^^^^ End optimized */"
-            hFlush stdout
-
-          when (showPeephole && r == Reducible) $ do
+          when (codeViz && langPeephole) $ do
             putStrLn "/* Peephole: @@@@@@@@@@@@@@@@@@@@ "
             let pprCode block = text "CODE:" <+> (fromMaybe (text "?") $ blockTagOO block)
                 code = wasmPeepholeOpt $
-                       structuredControl platform (\_ -> id) (\_ -> pprCode) graph
+                       structuredControl platform (\_ -> id) (\_ -> pprCode) r_graph
             pprout context $ pdoc platform code
             putStrLn "@@@@@@@@@@@@@@@@@@@ end peephole */"
             hFlush stdout
 
-          when (showOptResults && r == Reducible) $ do
+          when (pathResults && langWasm) $ do
             let (results, ios) = unzip $ map analyzeTest $ wasmOptResults
             putStrLn "/* ##################### "
             putStrLn $ "Testing optimized wasm " ++ show (length wasmOptResults) ++ " path results"
@@ -323,9 +352,7 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
             putStrLn "   ##################### */ "
             hFlush stdout
 
-
-
-          when (showPeepholeResults && r == Reducible) $ do
+          when (pathResults && langPeephole) $ do
             let (results, ios) = unzip $ map analyzeTest $ wasmPeepholeResults
             putStrLn "/* ##################### "
             putStrLn $ "Testing peephole " ++ show (length wasmPeepholeResults) ++ " path results"
@@ -334,7 +361,7 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
             putStrLn "   ##################### */ "
             hFlush stdout
 
-          when showCollapse $ do
+          when nodeSplit $ do
             let dump selected graph =
                     printSDocLn context (PageMode True) stdout $
                     dotGraph showInfo selected graph
@@ -346,10 +373,8 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
                     putStrLn "/* absorbing node: */" >> dump (selected to) g
                 props k ps = [(k, ps)]
                 splitProps = [("peripheries", int 3), ("color", text "blue")]
-                _labelTag lbl =
-                    blockTag $ mapFindWithDefault (panic "block") lbl $ graphMap graph
 
-                pprLabel = blockTag' empty . blockLabeled graph
+                pprLabel = blockTag' empty . blockLabeled og_graph
 
                 showInfo :: (Int, Info) -> SDoc
                 showInfo (_, info) = unsplit `commaCat` split
@@ -365,12 +390,8 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
                            else text tag <> text ":" <+> pprLabels (setElems labels)
                        pprLabels = pprWithCommas pprLabel
 
-            mapM_ showEvent $ collapseCmm graph
+            mapM_ showEvent $ collapseCmm og_graph
 
-
-         where wasmOptResults = wasmResults graph (Opt.structuredControl platform const const graph)
-               wasmPathResults = wasmResults graph (structuredControl platform const const graph)
-               wasmPeepholeResults = wasmResults graph (wasmPeepholeOpt $ structuredControl platform const const graph)
 
 
         resultReport results =
