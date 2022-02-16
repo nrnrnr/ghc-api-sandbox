@@ -6,6 +6,8 @@ module GHC.Wasm.ControlFlow.Opt
   )
 where
 
+-- import Debug.Trace
+
 import Prelude hiding (succ)
 
 import Data.Maybe
@@ -22,6 +24,7 @@ import GHC.Platform
 
 import GHC.Utils.Panic
 import GHC.Utils.Outputable (Outputable, text, (<+>), ppr
+                            , showSDocUnsafe
                             , pprWithCommas
                             )
 
@@ -49,11 +52,7 @@ data ContainingSyntax
     | IfThenElse (Maybe Label)
     | BlockFollowedByTrap
 
-matchesFrame :: Label -> ContainingSyntax -> Bool
-matchesFrame label (BlockFollowedBy l) = label == l
-matchesFrame label (LoopHeadedBy l) = label == l
-matchesFrame label (IfThenElse (Just l)) = label == l
-matchesFrame _ _ = False
+-- type Context = [ContainingSyntax]
 
 data Context = Context { enclosing :: [ContainingSyntax]
                        , fallthrough :: Maybe Label  -- the label can
@@ -70,10 +69,16 @@ emptyContext :: Context
 emptyContext = Context [] Nothing
 
 inside :: ContainingSyntax -> Context -> Context
+--plusFallthrough :: Context -> Label -> Context
 withFallthrough :: Context -> Label -> Context
+--noFallthrough :: Context -> Context
+--wrappedFor :: Context -> Label -> Context
+--notWrapped :: Context -> Context
 
 inside frame c = c { enclosing = frame : enclosing c }
 withFallthrough c l = c { fallthrough = Just l }
+--noFallthrough c = c { fallthrough = Nothing }
+
 
 -- | Convert a Cmm CFG to structured control flow expressed as
 -- a `WasmStmt`.
@@ -89,7 +94,7 @@ structuredControl :: forall e s .
                   -> WasmStmt s e
 structuredControl platform txExpr txBlock g =
    if paranoidFlow && hasBlock isSwitchWithoutDefault g then -- see Note [Paranoid flow]
-       wasmUnlabeled WasmBlock
+       wasmUnlabeled WasmBlock 
        (doNode (blockLabeled (g_entry g)) (BlockFollowedByTrap `inside` emptyContext)) <>
        WasmUnreachable
    else
@@ -99,7 +104,7 @@ structuredControl platform txExpr txBlock g =
    nestWithin :: CmmBlock -> [CmmBlock] -> Maybe Label -> Context -> WasmStmt s e
    doBranch   :: Label -> Label         -> Context -> WasmStmt s e
 
-   doNode x context =
+   doNode x context = 
        let codeForX = nestWithin x (dominatees x) Nothing
        in  if isHeader x then
              wasmLabeled (entryLabel x)
@@ -120,16 +125,16 @@ structuredControl platform txExpr txBlock g =
    nestWithin x (y_n:ys) Nothing context =
        nestWithin x ys (Just ylabel) (context `withFallthrough` ylabel) <> doNode y_n context
      where ylabel = entryLabel y_n
-   nestWithin x [] (Just zlabel) context
+   nestWithin x [] (Just zlabel) context 
      | not (generatesIf x) =
          wasmLabeled zlabel WasmBlock (nestWithin x [] Nothing context')
      where context' = BlockFollowedBy zlabel `inside` context
    nestWithin x [] maybeMarks context =
-       WasmLabel (Labeled xlabel undefined) <> translationOfX context
+       WasmLabel (Labeled xlabel undefined) <> emitBlockX context
 
-     -- (In Peterson, translationOfX combines case 1 step 6, case 2 step 1, case 2 step 3)
-     where translationOfX :: Context -> WasmStmt s e
-           translationOfX context =
+     -- (In Peterson, emitBlockX combines case 1 step 6, case 2 step 1, case 2 step 3)
+     where emitBlockX :: Context -> WasmStmt s e
+           emitBlockX context =
              wasmLabeled xlabel WasmSlc (txBlock xlabel (nodeBody x)) <>
              case flowLeaving platform x of
                Unconditional l -> doBranch xlabel l context -- Peterson: case 1 step 6
@@ -147,7 +152,7 @@ structuredControl platform txExpr txBlock g =
                                                   (switchIndex default')
             where switchIndex :: Maybe Label -> Labeled Int
                   switchIndex Nothing = wasmUnlabeled id nothingIndex
-                  switchIndex (Just lbl) = wasmLabeled lbl id (index lbl (enclosing context))
+                  switchIndex (Just lbl) = wasmLabeled lbl id (index' lbl (enclosing context))
                   nothingIndex = if paranoidFlow then trapIndex (enclosing context) else 0
 
            xlabel = entryLabel x
@@ -157,13 +162,16 @@ structuredControl platform txExpr txBlock g =
                                                   _ -> False
 
    -- In Peterson, `doBranch` implements case 2 (and part of case 1)
-   doBranch from to context
+   doBranch from to context =
+       -- (WasmComment $ pprShow $ text "branch with fallthough" <+> pprWithCommas ppr (fallthrough context)) <> 
+       doBranch' from to context
+   doBranch' from to context 
       | to `elem` fallthrough context = mempty -- WasmComment "eliminated branch"
       | isBackward from to = WasmContinue to i
            -- Peterson: case 1 step 4
       | isMergeLabel to = WasmExit to i
       | otherwise = doNode (blockLabeled to) context
-     where i = index to (enclosing context)
+     where i = index' to (enclosing context)
 
    ---- everything else here is utility functions
 
@@ -201,7 +209,7 @@ structuredControl platform txExpr txBlock g =
                  | otherwise = addToList (from :) to pm
 
    isMergeLabel l = setMember l mergeBlockLabels
-   isMergeNode = isMergeLabel . entryLabel
+   isMergeNode = isMergeLabel . entryLabel                   
 
    mergeBlockLabels :: LabelSet
    -- N.B. A block is a merge node if it is where control flow merges.
@@ -224,8 +232,16 @@ structuredControl platform txExpr txBlock g =
 
    immediateDominatees x = idominatees (entryLabel x)
 
-   index _ [] = panic "destination label not in context"
-   index label (frame : context)
+   index' lbl context =
+       if stackHas context lbl then index lbl context
+       else panic ("destination label " ++ pprShow lbl ++
+                   " not in context " ++ pprShow context)
+
+   index lbl context =
+       index'' lbl context
+
+   index'' _ [] = panic "destination label not in context"
+   index'' label (frame : context)
        | label `matchesFrame` frame = 0
        | otherwise = 1 + index label context
      where
@@ -234,12 +250,13 @@ structuredControl platform txExpr txBlock g =
    trapIndex [] = panic "context does not include a trap"
    trapIndex (BlockFollowedByTrap : _) = 0
    trapIndex (_ : context) = 1 + trapIndex context
+  
 
-
-   idominatees :: Label -> [CmmBlock]
+   idominatees :: Label -> [CmmBlock] 
      -- Immediate dominatees, sorted with highest rpnum first
    gwd = graphWithDominators g
-   rpnum = gwdRPNumber gwd
+   rpnum lbl = mapFindWithDefault (panic "label without reverse postorder number")
+               lbl (gwd_rpnumbering gwd)
    (idominatees, dominates) = (idominatees, dominates)
        where addToDominatees ds label rpnum =
                case fromJust $ idom label of
@@ -270,8 +287,7 @@ structuredControl platform txExpr txBlock g =
 
    isBackward from to = rpnum to <= rpnum from -- self-edge counts as a backward edge
 
-
-type Dominatees = [(Label, RPNum)]
+type Dominatees = [(Label, RPNum)] 
   -- ^ List of blocks that are immediately dominated by a block.
   -- (In a just world this definition could go into a `where` clause.)
 
@@ -287,14 +303,10 @@ flowLeaving platform b =
               scrutinee = smartPlus platform e offset
               range = inclusiveInterval (lo+toInteger offset) (hi+toInteger offset)
           in  Switch scrutinee range target_labels default_label
-
+          
       CmmCall { cml_cont = Just l } -> Unconditional l
       CmmCall { cml_cont = Nothing } -> TerminalFlow
       CmmForeignCall { succ = l } -> Unconditional l
-
-nodeBody :: Block n C C -> Block n O O
-nodeBody (BlockCC _first middle _last) = middle
-
 
 smartPlus :: Platform -> CmmExpr -> Int -> CmmExpr
 smartPlus _ e 0 = e
@@ -310,7 +322,7 @@ isSwitchWithoutDefault b =
 
 
 --  Note [Paranoid Flow]
---
+--  
 --  If it knows all alternatives to a `case` expression, GHC generates a
 --  `CmmSwitch` node without a default label.  But the Wasm target
 --  requires a default label for *every* switch.  So if the graph
@@ -318,7 +330,7 @@ isSwitchWithoutDefault b =
 --  we generate an extra block that is followed by an `unreachable`
 --  instruction, and every Wasm `br_table` instruction is given
 --  that label as its default target.  That's paranoid.
---
+--  
 --  If we truly trust GHC that the default will never run,
 --  we could avoid ever emitting that extra block.  The `trapIndex`
 --  function would need to be altered to return zero always
@@ -335,13 +347,32 @@ addToList consx = mapAlter add
           add (Just xs) = Just (consx xs)
 
 hasBlock :: (Block node C C -> Bool) -> GenCmmGraph node -> Bool
-hasBlock p g = mapFoldl (\b block -> b || p block) False (graphMap g)
+hasBlock p g = mapFoldl (\b block -> b || p block) False blockmap
+   where GMany NothingO blockmap NothingO = g_graph g
+
 
 ------------------------------------------------------------------
 --- everything below here is for diagnostics in case of panic
+
+
+pprShow :: Outputable a => a -> String
+pprShow a = showSDocUnsafe (ppr a)
+
 
 instance Outputable ContainingSyntax where
     ppr (BlockFollowedBy l) = text "node" <+> ppr l
     ppr (LoopHeadedBy l) = text "loop" <+> ppr l
     ppr (IfThenElse l) = text "if-then-else" <+> ppr l
     ppr (BlockFollowedByTrap) = text "trap"
+
+stackHas :: [ContainingSyntax] -> Label -> Bool
+stackHas frames lbl = any (matchesFrame lbl) frames
+
+nodeBody :: Block n C C -> Block n O O
+nodeBody (BlockCC _first middle _last) = middle
+
+matchesFrame :: Label -> ContainingSyntax -> Bool
+matchesFrame label (BlockFollowedBy l) = label == l
+matchesFrame label (LoopHeadedBy l) = label == l
+matchesFrame label (IfThenElse (Just l)) = label == l
+matchesFrame _ _ = False
