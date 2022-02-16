@@ -15,7 +15,7 @@ module GHC.Cmm.Dominators.Lint
   )
 where
 
-import GHC.Cmm.Dataflow
+import GHC.Cmm.Reducibility
 import GHC.Cmm.Dataflow.Block
 import GHC.Cmm.Dataflow.Collections
 import GHC.Cmm.Dominators
@@ -55,7 +55,7 @@ shortPaths' g = pathsPrefixed (g_entry g) [] setEmpty
         CmmGraph { g_graph = GMany NothingO blockmap NothingO } = g
 
 
--- | The literal definition: The dominators of node A are the ones that appear on 
+-- | The literal definition: The dominators of node A are the ones that appear on
 -- every path ending in A.  The short paths suffice.  This one is slow to compute.
 
 dominatorsByPath :: NonLocal node => GenCmmGraph node -> LabelMap LabelSet
@@ -134,33 +134,3 @@ dominatorsFailures g =
     [NonClimbing | reducibility (graphWithDominators g) == Reducible,
                    not (dominatorsClimb g)] ++
     inconsistentDominators g
-
-----------------------------------------------------------------
-
--- copy of code.  Ugh.
-
-data Reducibility = Reducible | Irreducible
-  deriving (Eq, Show)
-
-reducibility :: (NonLocal node) => GraphWithDominators node -> Reducibility
-reducibility gwd = fastReducibility rpnum dominates (graphMap $ gwd_graph gwd)
-  where rpnums = gwd_rpnumbering gwd
-        rpnum lbl = mapFindWithDefault unreachableRPNum lbl rpnums
-
-        dmap = gwd_dominators gwd
-        dominators lbl = mapFindWithDefault (panic "no dominator") lbl dmap
-        dominates lbl blockname = lbl == blockname || hasLbl (dominators blockname)
-          where hasLbl EntryNode = False
-                hasLbl (ImmediateDominator l p) = l == lbl || hasLbl p
-
-
-fastReducibility :: NonLocal node
-             => (Label -> RPNum)
-             -> (Label -> Label -> Bool)
-             -> LabelMap (Block node C C)
-             -> Reducibility
-fastReducibility rpnum dominates blockmap =
-    if all goodBlock blockmap then Reducible else Irreducible
-        where goodBlock b = unreachable b || all (goodEdge (entryLabel b)) (successors b)
-              goodEdge from to = rpnum to > rpnum from || to `dominates` from
-              unreachable b = rpnum (entryLabel b) == unreachableRPNum

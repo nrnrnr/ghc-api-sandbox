@@ -4,7 +4,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE RankNTypes #-}
 
-module GHC.Cmm.Dominators
+module Attic.Dominators
   ( DominatorSet(..)
   , GraphWithDominators(..)
   , RPNum

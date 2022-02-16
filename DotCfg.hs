@@ -11,6 +11,8 @@ where
 
 import Prelude hiding ((<>))
 
+import Data.Maybe
+
 import GHC.Cmm.Dominators
 
 import GHC.Cmm
@@ -57,7 +59,7 @@ dotCFG nodeTag title (g@CmmGraph { g_graph = GMany NothingO blockmap NothingO, g
             setFromList [label | label <- successors block,
                                           dominates label (entryLabel block)]
         rpnums = gwd_rpnumbering gwd
-        rpnum lbl = mapFindWithDefault unreachableRPNum lbl rpnums
+        rpnum lbl = mapLookup lbl rpnums
 
         entryviz = case fastReducibility rpnum dominates blockmap of
                      Reducible -> title
@@ -70,7 +72,7 @@ dotCFG nodeTag title (g@CmmGraph { g_graph = GMany NothingO blockmap NothingO, g
         exitNodeLabels :: [Label]
         exitNodeLabels =
             foldMap (\n -> if null (successors n) then [entryLabel n] else []) blockmap
-        exitDominators = foldl1 intersectDominatorsSlow $ map addDoms exitNodeLabels
+        exitDominators = foldl1 intersectDominators $ map addDoms exitNodeLabels
             where addDoms lbl = ImmediateDominator lbl $
                                 case dominators lbl of Nothing -> EntryNode
                                                        Just doms -> doms
@@ -93,28 +95,31 @@ reducibility gwd = fastReducibility rpnum dominates (graphMap $ gwd_graph gwd)
                 hasLbl (ImmediateDominator l p) = l == lbl || hasLbl p
 -}
 
+
 fastReducibility :: NonLocal node
-             => (Label -> RPNum)
+             => (Label -> Maybe RPNum)
              -> (Label -> Label -> Bool)
              -> LabelMap (Block node C C)
              -> Reducibility
 fastReducibility rpnum dominates blockmap =
     if all goodBlock blockmap then Reducible else Irreducible
         where goodBlock b = unreachable b || all (goodEdge (entryLabel b)) (successors b)
-              goodEdge from to = rpnum to > rpnum from || to `dominates` from
-              unreachable b = rpnum (entryLabel b) == unreachableRPNum
-dotNode :: (a -> SDoc) -> LabelSet -> (Label -> RPNum) -> LabelMap DominatorSet -> (Label, a) -> SDoc
+              goodEdge from to = case (rpnum from, rpnum to) of
+                                   (Just fn, Just tn) -> tn > fn || to `dominates` from
+                                   _ -> True
+              unreachable b = isNothing $ rpnum (entryLabel b)
+dotNode :: (a -> SDoc) -> LabelSet -> (Label -> Maybe RPNum) -> LabelMap DominatorSet -> (Label, a) -> SDoc
 dotNode display headers rpnum dmap (label, a) =
   dotName label <> space <>
   text "[label=" <> doubleQuotes (hcat [display a, dotlabel]) <> headermark <> text "]"
                 <> text ";"
   where dotlabel =
             if False then -- noisy
-                text " ==" <+> ppr label <> text "(" <> ppr nodenum <>
+                text " ==" <+> ppr label <> text "(" <> nodenum <>
                 text "): " <> dotDominators (mapLookup label dmap)
             else
                 empty
-        nodenum = rpnum label
+        nodenum = text "U" `fromMaybe` (ppr <$> rpnum label)
         headermark = if setMember label headers then
                          space <> text "peripheries=2"
                      else
@@ -126,7 +131,7 @@ dotDominators (Just (ImmediateDominator lbl parent)) = ppr lbl <> text " -> " <>
 dotDominators Nothing = text "<unreachable?>"
 
 
-dotEdge :: (Label -> RPNum) -> (Label, Label) -> SDoc
+dotEdge :: (Label -> Maybe RPNum) -> (Label, Label) -> SDoc
 dotEdge rpnum (from, to) = dotName from <> text "->" <> dotName to <> style <> text ";"
   where style = if rpnum to <= rpnum from then
                     space <> text "[color=\"blue\"]"

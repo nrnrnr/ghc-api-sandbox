@@ -46,10 +46,8 @@ reducibility :: NonLocal node
              -> Reducibility
 reducibility gwd =
     if all goodBlock blockmap then Reducible else Irreducible
-  where goodBlock b = unreachable b || all (goodEdge (entryLabel b)) (successors b)
+  where goodBlock b = all (goodEdge (entryLabel b)) (successors b)
         goodEdge from to = rpnum to > rpnum from || to `dominates` from
-        unreachable b = rpnum (entryLabel b) == unreachableRPNum
-
         rpnum = gwdRPNumber gwd
         blockmap = graphMap $ gwd_graph gwd
         dominators = gwdDominatorsOf gwd
