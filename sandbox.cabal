@@ -95,6 +95,7 @@ executable ptest
                     TxTest
                     Attic.Dominators
                     Attic.Opt
+                    Attic.FlowCollapse
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
