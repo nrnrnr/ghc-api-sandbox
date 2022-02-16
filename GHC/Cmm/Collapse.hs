@@ -27,7 +27,7 @@ import GHC.Cmm.Dominators
 
 import qualified GHC.Data.Graph.Inductive.PatriciaTree as PT
 import GHC.Data.Graph.Inductive
-import GHC.Wasm.ControlFlow.Collapse (Info(..), VizMonad(..), collapse)
+import GHC.Wasm.ControlFlow.Collapse (Info(..), VizCollapseMonad(..), collapse)
 
 import GHC.Utils.Panic
 
@@ -89,7 +89,7 @@ instance MonadState VS VM where
   get = VM get
   put s = VM $ put s
 
-instance VizMonad (State VS) PT.Gr where
+instance VizCollapseMonad (State VS) PT.Gr where
   consumeByInGraph to from g = modify (add $ ConsumeBy to from g)
   splitGraphAt g (k, _) = modify (add $ SplitAt g k)
   finalGraph g = modify (add $ Finish g)
