@@ -1,7 +1,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 
-module GHC.Wasm.ControlFlow.Opt
+module Attic.Opt
   ( structuredControl
   )
 where
@@ -94,7 +94,7 @@ structuredControl :: forall e s .
                   -> WasmStmt s e
 structuredControl platform txExpr txBlock g =
    if paranoidFlow && hasBlock isSwitchWithoutDefault g then -- see Note [Paranoid flow]
-       wasmUnlabeled WasmBlock 
+       wasmUnlabeled WasmBlock
        (doNode (blockLabeled (g_entry g)) (BlockFollowedByTrap `inside` emptyContext)) <>
        WasmUnreachable
    else
@@ -104,7 +104,7 @@ structuredControl platform txExpr txBlock g =
    nestWithin :: CmmBlock -> [CmmBlock] -> Maybe Label -> Context -> WasmStmt s e
    doBranch   :: Label -> Label         -> Context -> WasmStmt s e
 
-   doNode x context = 
+   doNode x context =
        let codeForX = nestWithin x (dominatees x) Nothing
        in  if isHeader x then
              wasmLabeled (entryLabel x)
@@ -125,7 +125,7 @@ structuredControl platform txExpr txBlock g =
    nestWithin x (y_n:ys) Nothing context =
        nestWithin x ys (Just ylabel) (context `withFallthrough` ylabel) <> doNode y_n context
      where ylabel = entryLabel y_n
-   nestWithin x [] (Just zlabel) context 
+   nestWithin x [] (Just zlabel) context
      | not (generatesIf x) =
          wasmLabeled zlabel WasmBlock (nestWithin x [] Nothing context')
      where context' = BlockFollowedBy zlabel `inside` context
@@ -163,9 +163,9 @@ structuredControl platform txExpr txBlock g =
 
    -- In Peterson, `doBranch` implements case 2 (and part of case 1)
    doBranch from to context =
-       -- (WasmComment $ pprShow $ text "branch with fallthough" <+> pprWithCommas ppr (fallthrough context)) <> 
+       -- (WasmComment $ pprShow $ text "branch with fallthough" <+> pprWithCommas ppr (fallthrough context)) <>
        doBranch' from to context
-   doBranch' from to context 
+   doBranch' from to context
       | to `elem` fallthrough context = mempty -- WasmComment "eliminated branch"
       | isBackward from to = WasmContinue to i
            -- Peterson: case 1 step 4
@@ -209,7 +209,7 @@ structuredControl platform txExpr txBlock g =
                  | otherwise = addToList (from :) to pm
 
    isMergeLabel l = setMember l mergeBlockLabels
-   isMergeNode = isMergeLabel . entryLabel                   
+   isMergeNode = isMergeLabel . entryLabel
 
    mergeBlockLabels :: LabelSet
    -- N.B. A block is a merge node if it is where control flow merges.
@@ -250,9 +250,9 @@ structuredControl platform txExpr txBlock g =
    trapIndex [] = panic "context does not include a trap"
    trapIndex (BlockFollowedByTrap : _) = 0
    trapIndex (_ : context) = 1 + trapIndex context
-  
 
-   idominatees :: Label -> [CmmBlock] 
+
+   idominatees :: Label -> [CmmBlock]
      -- Immediate dominatees, sorted with highest rpnum first
    gwd = graphWithDominators g
    rpnum lbl = mapFindWithDefault (panic "label without reverse postorder number")
@@ -287,7 +287,7 @@ structuredControl platform txExpr txBlock g =
 
    isBackward from to = rpnum to <= rpnum from -- self-edge counts as a backward edge
 
-type Dominatees = [(Label, RPNum)] 
+type Dominatees = [(Label, RPNum)]
   -- ^ List of blocks that are immediately dominated by a block.
   -- (In a just world this definition could go into a `where` clause.)
 
@@ -303,7 +303,7 @@ flowLeaving platform b =
               scrutinee = smartPlus platform e offset
               range = inclusiveInterval (lo+toInteger offset) (hi+toInteger offset)
           in  Switch scrutinee range target_labels default_label
-          
+
       CmmCall { cml_cont = Just l } -> Unconditional l
       CmmCall { cml_cont = Nothing } -> TerminalFlow
       CmmForeignCall { succ = l } -> Unconditional l
@@ -322,7 +322,7 @@ isSwitchWithoutDefault b =
 
 
 --  Note [Paranoid Flow]
---  
+--
 --  If it knows all alternatives to a `case` expression, GHC generates a
 --  `CmmSwitch` node without a default label.  But the Wasm target
 --  requires a default label for *every* switch.  So if the graph
@@ -330,7 +330,7 @@ isSwitchWithoutDefault b =
 --  we generate an extra block that is followed by an `unreachable`
 --  instruction, and every Wasm `br_table` instruction is given
 --  that label as its default target.  That's paranoid.
---  
+--
 --  If we truly trust GHC that the default will never run,
 --  we could avoid ever emitting that extra block.  The `trapIndex`
 --  function would need to be altered to return zero always

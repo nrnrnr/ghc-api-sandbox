@@ -94,6 +94,7 @@ executable ptest
                     Words
                     TxTest
                     Attic.Dominators
+                    Attic.Opt
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
