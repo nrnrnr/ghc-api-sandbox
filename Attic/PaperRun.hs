@@ -2,7 +2,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE FlexibleContexts #-}
 
-module GHC.Wasm.ControlFlow.PaperRun
+module Attic.PaperRun
   ( evalWasm
   )
 where

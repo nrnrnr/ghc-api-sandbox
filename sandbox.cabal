@@ -73,8 +73,6 @@ executable ptest
                     GHC.Wasm.Ppr.Control
                     GHC.Wasm.ControlFlow.Run
                     GHC.Wasm.ControlFlow.FromCmm
-                    GHC.Wasm.ControlFlow.Paper
-                    GHC.Wasm.ControlFlow.PaperRun
                     GHC.Cmm.Dominators.Lint
                     GHC.Cmm.Reducibility
                     GHC.Test.ControlMonad
@@ -96,6 +94,8 @@ executable ptest
                     Attic.Opt
                     Attic.FlowCollapse
                     Attic.UnoptControlTx
+                    Attic.PaperTx
+                    Attic.PaperRun
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:

@@ -1,7 +1,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 
-module GHC.Wasm.ControlFlow.Paper
+module Attic.PaperTx
   ( structuredControl
   )
 where
@@ -68,7 +68,7 @@ structuredControl txExpr txBlock g = doNode (blockLabeled (g_entry g)) []
    -- a "block" is a structured control-flow construct akin
    -- to Pascal's `begin... end`.
 
-   -- | `doNode` basically handles Peterson's case 1: it emits code 
+   -- | `doNode` basically handles Peterson's case 1: it emits code
    -- from the block to the nearest merge node that the block dominates.
    --
    -- `nestWithin` takes the merge nodes that the block dominates, which are
@@ -84,7 +84,7 @@ structuredControl txExpr txBlock g = doNode (blockLabeled (g_entry g)) []
    nestWithin  :: CmmBlock -> [CmmBlock] -> Context -> WasmControl s
    doBranch :: Label -> Label         -> Context -> WasmControl s
 
-   doNode x context = 
+   doNode x context =
        let codeForX = nestWithin x (dominatees x)
        in  if isHeader x then
              WasmLoop (codeForX (LoopHeadedBy (entryLabel x) : context))
@@ -123,7 +123,7 @@ structuredControl txExpr txBlock g = doNode (blockLabeled (g_entry g)) []
 
 
    -- In Peterson, `doBranch` implements case 2 (and part of case 1)
-   doBranch source target context 
+   doBranch source target context
       | isBackward source target = WasmBr i -- continue
            -- Peterson: case 1 step 4
       | isMergeLabel target = WasmBr i -- exit
@@ -173,7 +173,7 @@ structuredControl txExpr txBlock g = doNode (blockLabeled (g_entry g)) []
                  | otherwise = addToList (from :) to pm
 
    isMergeLabel l = setMember l mergeBlockLabels
-   isMergeNode = isMergeLabel . entryLabel                   
+   isMergeNode = isMergeLabel . entryLabel
 
    mergeBlockLabels :: LabelSet
    -- N.B. A block is a merge node if it is where control flow merges.
@@ -213,9 +213,9 @@ structuredControl txExpr txBlock g = doNode (blockLabeled (g_entry g)) []
    trapIndex [] = panic "context does not include a trap"
    trapIndex (BlockFollowedByTrap : _) = 0
    trapIndex (_ : context) = 1 + trapIndex context
-  
 
-   idominatees :: Label -> [CmmBlock] 
+
+   idominatees :: Label -> [CmmBlock]
      -- Immediate dominatees, sorted with highest rpnum first
    gwd = graphWithDominators g
    rpnum lbl = mapFindWithDefault (panic "label without reverse postorder number")
@@ -251,7 +251,7 @@ structuredControl txExpr txBlock g = doNode (blockLabeled (g_entry g)) []
    isBackward :: Label -> Label -> Bool
    isBackward from to = rpnum to <= rpnum from -- self-edge counts as a backward edge
 
-type Dominatees = [(Label, RPNum)] 
+type Dominatees = [(Label, RPNum)]
   -- ^ List of blocks that are immediately dominated by a block.
   -- (In a just world this definition could go into a `where` clause.)
 
@@ -267,7 +267,7 @@ flowLeaving platform b =
               scrutinee = smartPlus platform e offset
               range = inclusiveInterval (lo+toInteger offset) (hi+toInteger offset)
           in  Switch scrutinee range target_labels default_label
-          
+
       CmmCall { cml_cont = Just l } -> Unconditional l
       CmmCall { cml_cont = Nothing } -> TerminalFlow
       CmmForeignCall { succ = l } -> Unconditional l
@@ -286,7 +286,7 @@ _isSwitchWithoutDefault b =
 
 
 --  Note [Paranoid Flow]
---  
+--
 --  If it knows all alternatives to a `case` expression, GHC generates a
 --  `CmmSwitch` node without a default label.  But the Wasm target
 --  requires a default label for *every* switch.  So if the graph
@@ -294,7 +294,7 @@ _isSwitchWithoutDefault b =
 --  we generate an extra block that is followed by an `unreachable`
 --  instruction, and every Wasm `br_table` instruction is given
 --  that label as its default target.  That's paranoid.
---  
+--
 --  If we truly trust GHC that the default will never run,
 --  we could avoid ever emitting that extra block.  The `trapIndex`
 --  function would need to be altered to return zero always
