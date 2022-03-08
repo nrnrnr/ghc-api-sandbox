@@ -15,7 +15,7 @@ import Prelude hiding ((<>))
 
 import DotGraph
 import Control.Exception
-import GHC.Data.Graph.Inductive
+import GHC.Data.Graph.Inductive.Graph
 import GHC.Cmm.Dominators (RPNum)
 
 import Data.Function hiding ((&))

@@ -81,7 +81,7 @@ executable ptest
                     GHC.Cmm.ControlFlow.Run
                     GHC.Wasm.ControlFlow.Collapse
                     GHC.Cmm.Collapse
-                    GHC.Data.Graph.Inductive
+                    GHC.Data.Graph.Inductive.Graph
                     GHC.Data.Graph.Inductive.PatriciaTree
                     FlowTest
                     StgToCmmLite

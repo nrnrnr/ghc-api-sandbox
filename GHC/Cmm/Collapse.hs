@@ -26,7 +26,7 @@ import GHC.Cmm.Dataflow.Label
 import GHC.Cmm.Dominators
 
 import qualified GHC.Data.Graph.Inductive.PatriciaTree as PT
-import GHC.Data.Graph.Inductive
+import GHC.Data.Graph.Inductive.Graph
 import GHC.Wasm.ControlFlow.Collapse (Info(..), VizCollapseMonad(..), collapse)
 
 import GHC.Utils.Panic

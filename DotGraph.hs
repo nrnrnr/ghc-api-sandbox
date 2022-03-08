@@ -15,7 +15,7 @@ import Prelude hiding ((<>))
 import Data.Maybe
 
 import GHC.Utils.Outputable
-import GHC.Data.Graph.Inductive hiding (empty)
+import GHC.Data.Graph.Inductive.Graph hiding (empty)
 
 type Properties = [(String, SDoc)]
 

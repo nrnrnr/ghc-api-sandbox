@@ -25,7 +25,7 @@ module GHC.Data.Graph.Inductive.PatriciaTree
     )
     where
 
-import GHC.Data.Graph.Inductive
+import GHC.Data.Graph.Inductive.Graph
 
 import           Control.Applicative (liftA2)
 import           Data.IntMap         (IntMap)
