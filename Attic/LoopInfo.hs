@@ -1,6 +1,6 @@
 {-# LANGUAGE TypeFamilies #-}
 
-module GHC.Cmm.LoopInfo
+module Attic.LoopInfo
   ( LoopInfo(..), Edge(..)
   , loopInfo
   )
@@ -15,10 +15,10 @@ data Edge = Edge { edge_from :: Label, edge_to :: Label }
 
 data LoopInfo = LoopInfo
   { liBackEdges :: [Edge] -- ^ List of back edges
-  , liHeaders :: LabelSet 
+  , liHeaders :: LabelSet
   , liLoops :: [(Edge, LabelSet)] -- ^ Natural loop containing a given back edge;
                                   -- (backEdge, loopBody) where body includes header
-                                  
+
   , liLevels :: LabelMap Int  -- number of natural loops in which need node appears,
                               -- default 0
   }
@@ -43,14 +43,14 @@ loopInfo gwd = LoopInfo backEdges headers loops levels
         preds :: Label -> [Label]
         preds l = mapFindWithDefault [] l predmap
 
-        naturalLoopOf :: Edge -> LabelSet 
+        naturalLoopOf :: Edge -> LabelSet
         naturalLoopOf (Edge from to) = visitPreds from (setSingleton to)
           where visitPreds lbl visited
                     | setMember lbl visited = visited
                     | otherwise = visitNodes (preds lbl) (setInsert lbl visited)
                 visitNodes [] visited = visited
                 visitNodes (l:ls) visited = visitNodes ls (visitPreds l visited)
-        loops = map (\e -> (e, naturalLoopOf e)) backEdges                                          
+        loops = map (\e -> (e, naturalLoopOf e)) backEdges
         levels = foldl addLoop mapEmpty loops
           where addLoop labelmap (_, labels) = setFoldl bump labelmap labels
                 bump labelmap label = mapInsert label (succ $ count label labelmap) labelmap
@@ -59,7 +59,7 @@ loopInfo gwd = LoopInfo backEdges headers loops levels
         blockmap = graphMap (gwd_graph gwd)
         rpnum = gwdRPNumber gwd
 
--- A node is a loop header if it is a target 
+-- A node is a loop header if it is a target
 -- of a back edge from a node it dominates.
 -- (This definition works even for irreducible
 -- graphs, for which it finds fewer headers

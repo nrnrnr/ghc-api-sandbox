@@ -70,13 +70,12 @@ executable ptest
                     DotCfg
                     SCode
                     GHC.Wasm.ControlFlow
-                    GHC.Wasm.Ppr.Control
                     GHC.Wasm.ControlFlow.Run
                     GHC.Wasm.ControlFlow.FromCmm
+                    GHC.Wasm.Ppr.Control
                     GHC.Cmm.Dominators.Lint
                     GHC.Cmm.Reducibility
                     GHC.Test.ControlMonad
-                    GHC.Cmm.LoopInfo
                     GHC.Test.ControlMonad.QC
                     GHC.Test.CmmPaths
                     GHC.Cmm.ControlFlow.Run
@@ -93,6 +92,7 @@ executable ptest
                     Attic.Dominators
                     Attic.Opt
                     Attic.FlowCollapse
+                    Attic.LoopInfo
                     Attic.UnoptControlTx
                     Attic.PaperTx
                     Attic.PaperRun
