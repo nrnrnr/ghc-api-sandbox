@@ -63,31 +63,44 @@ common program-default-options
 
 executable ptest
     import: program-default-options
-    main-is:          PTest.hs
+    main-is:        PTest.hs
 
     -- Modules included in this executable, other than Main.
-    other-modules:  GHC.Cmm.Dominators
-                    DotCfg
-                    SCode
+    other-modules:  
+
+                     -- dominators
+                    GHC.Cmm.Dominators
+
+                     -- graphs
+                    GHC.Data.Graph.Inductive.Graph
+                    GHC.Data.Graph.Inductive.PatriciaTree
+
+                     -- translation
                     GHC.Wasm.ControlFlow
-                    GHC.Wasm.ControlFlow.Run
                     GHC.Wasm.ControlFlow.FromCmm
-                    GHC.Wasm.Ppr.Control
-                    GHC.Cmm.Dominators.Lint
+
+                     -- node splitting
+                    GHC.Wasm.ControlFlow.Collapse
+                    GHC.Cmm.Collapse
                     GHC.Cmm.Reducibility
+
+                     -- testing
+                    GHC.Wasm.Ppr.Control
                     GHC.Test.ControlMonad
                     GHC.Test.ControlMonad.QC
                     GHC.Test.CmmPaths
                     GHC.Cmm.ControlFlow.Run
-                    GHC.Wasm.ControlFlow.Collapse
-                    GHC.Cmm.Collapse
-                    GHC.Data.Graph.Inductive.Graph
-                    GHC.Data.Graph.Inductive.PatriciaTree
+                    GHC.Wasm.ControlFlow.Run
+                    GHC.Cmm.Dominators.Lint
+
                     FlowTest
                     StgToCmmLite
+                    DotCfg
                     DotGraph
                     Words
                     TxTest
+
+                     -- attic
                     Attic.Dominators
                     Attic.Opt
                     Attic.FlowCollapse
