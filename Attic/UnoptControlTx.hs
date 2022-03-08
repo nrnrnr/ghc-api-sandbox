@@ -1,7 +1,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 
-module GHC.Wasm.ControlFlow.OfCmm
+module Attic.UnoptControlTx
   ( structuredControl
   )
 where
@@ -74,7 +74,7 @@ structuredControl platform txExpr txBlock g =
    -- a "block" is a structured control-flow construct akin
    -- to Pascal's `begin... end`.
 
-   -- | `doBlock` basically handles Peterson's case 1: it emits code 
+   -- | `doBlock` basically handles Peterson's case 1: it emits code
    -- from the block to the nearest merge node that the block dominates.
    --
    -- `doExits` takes the merge nodes that the block dominates, which are
@@ -90,7 +90,7 @@ structuredControl platform txExpr txBlock g =
    doExits  :: CmmBlock -> [CmmBlock] -> Context -> WasmStmt s e
    doBranch :: Label -> Label         -> Context -> WasmStmt s e
 
-   doBlock x context = 
+   doBlock x context =
        if isHeader xlabel then
            wasmLabeled xlabel WasmLoop (emitBlockX (LoopHeadedBy xlabel : context))
        else
@@ -130,14 +130,14 @@ structuredControl platform txExpr txBlock g =
             where switchIndex :: Maybe Label -> Labeled Int
                   switchIndex Nothing = wasmUnlabeled id (trapIndex context)
                   switchIndex (Just lbl) = wasmLabeled lbl id (index' lbl context)
-                          
+
 
            xlabel = entryLabel x
            -- headerStatus = if isHeader xlabel then " (HEADER)" else " (not header)"
 
 
    -- In Peterson, `doBranch` implements case 2 (and part of case 1)
-   doBranch from to context 
+   doBranch from to context
       | isBackward from to = WasmContinue to i
            -- Peterson: case 1 step 4
       | isMergeLabel to = WasmExit to i
@@ -190,7 +190,7 @@ structuredControl platform txExpr txBlock g =
                  | otherwise = addToList (from :) to pm
 
    isMergeLabel l = setMember l mergeBlockLabels
-   isMergeBlock = isMergeLabel . entryLabel                   
+   isMergeBlock = isMergeLabel . entryLabel
 
    mergeBlockLabels :: LabelSet
    -- N.B. A block is a merge node if it is where control flow merges.
@@ -230,9 +230,9 @@ structuredControl platform txExpr txBlock g =
    trapIndex [] = panic "context does not include a trap"
    trapIndex (BlockFollowedByTrap : _) = 0
    trapIndex (_ : context) = 1 + trapIndex context
-  
 
-   idominatees :: Label -> [CmmBlock] 
+
+   idominatees :: Label -> [CmmBlock]
      -- Immediate dominatees, sorted with highest rpnum first
    gwd = graphWithDominators g
    rpnum lbl = mapFindWithDefault (panic "label without reverse postorder number")
@@ -267,7 +267,7 @@ structuredControl platform txExpr txBlock g =
 
    isBackward from to = rpnum to <= rpnum from -- self-edge counts as a backward edge
 
-type Dominatees = [(Label, RPNum)] 
+type Dominatees = [(Label, RPNum)]
   -- ^ List of blocks that are immediately dominated by a block.
   -- (In a just world this definition could go into a `where` clause.)
 
@@ -283,7 +283,7 @@ flowLeaving platform b =
               scrutinee = smartPlus platform e offset
               range = inclusiveInterval (lo+toInteger offset) (hi+toInteger offset)
           in  Switch scrutinee range target_labels default_label
-          
+
       CmmCall { cml_cont = Just l } -> Unconditional l
       CmmCall { cml_cont = Nothing } -> TerminalFlow
       CmmForeignCall { succ = l } -> Unconditional l
@@ -302,7 +302,7 @@ isSwitchWithoutDefault b =
 
 
 --  Note [Paranoid Flow]
---  
+--
 --  If it knows all alternatives to a `case` expression, GHC generates a
 --  `CmmSwitch` node without a default label.  But the Wasm target
 --  requires a default label for *every* switch.  So if the graph
@@ -310,7 +310,7 @@ isSwitchWithoutDefault b =
 --  we generate an extra block that is followed by an `unreachable`
 --  instruction, and every Wasm `br_table` instruction is given
 --  that label as its default target.  That's paranoid.
---  
+--
 --  If we truly trust GHC that the default will never run,
 --  we could avoid ever emitting that extra block.  The `trapIndex`
 --  function would need to be altered to return zero always
@@ -350,4 +350,3 @@ stackHas frames lbl = any (matches lbl) frames
      where matches label (BlockFollowedBy l) = label == l
            matches label (LoopHeadedBy l) = label == l
            matches _ _ = False
-

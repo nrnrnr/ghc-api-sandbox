@@ -29,7 +29,7 @@ import GHC.Types.Unique.Supply
 import Control.Monad
 import Control.Monad.IO.Class
 
-import GHC.Wasm.ControlFlow.OfCmm
+import Attic.UnoptControlTx
 import qualified GHC.Wasm.ControlFlow.Opt as Opt
 
 import GHC.Driver.Config.StgToCmm (initStgToCmmConfig)

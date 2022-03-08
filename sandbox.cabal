@@ -72,7 +72,6 @@ executable ptest
                     GHC.Wasm.ControlFlow
                     GHC.Wasm.Ppr.Control
                     GHC.Wasm.ControlFlow.Run
-                    GHC.Wasm.ControlFlow.OfCmm
                     GHC.Wasm.ControlFlow.Opt
                     GHC.Wasm.ControlFlow.Paper
                     GHC.Wasm.ControlFlow.PaperRun
@@ -96,6 +95,7 @@ executable ptest
                     Attic.Dominators
                     Attic.Opt
                     Attic.FlowCollapse
+                    Attic.UnoptControlTx
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
@@ -109,7 +109,8 @@ executable ptest
                       containers >= 0.6,
                       mtl >= 2.2,
                       utf8-string == 1.0.2,
-                      cryptohash-sha1 == 0.11.*
+                      cryptohash-sha1 == 0.11.*,
+                      optparse-applicative == 0.17.*
     hs-source-dirs:   .
     default-language: Haskell2010
 
