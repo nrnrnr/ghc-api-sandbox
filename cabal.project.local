@@ -1,0 +1,8 @@
+ignore-project: False
+
+package *
+  ghc-location: /home/nr/.ghc-snapshots/9.0.2/stage1/bin/ghc
+
+program-locations
+  ghc-location: /home/nr/.ghc-snapshots/9.0.2/stage1/bin/ghc
+  haddock-location: /home/nr/.ghc-snapshots/9.0.2/stage1/bin/haddock

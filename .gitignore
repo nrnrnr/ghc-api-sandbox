@@ -1,2 +1,13 @@
 *~
 /dist-newstyle
+/cabal.project.local?*
+*.hi
+*.o
+/app/Main
+/dist
+/?.pdf
+/??.pdf
+/?.dot
+/??.dot
+/*.dot
+/*.pdf

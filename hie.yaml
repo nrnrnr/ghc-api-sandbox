@@ -1,0 +1,9 @@
+cradle:
+  direct:
+    arguments: [
+      "-package-env", "-",
+      "-clear-package-db",
+      "-package-db", "/home/nr/.ghc-snapshots/9.0.2/stage0/lib/package.conf.d",
+#      "-package-db", "/home/nr/.local/share/ghc/x86_64-linux-9.2.1/package.conf.d",
+      "-package-id", "ghc-9.3"
+      ]
