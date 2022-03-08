@@ -32,11 +32,11 @@ executable ptest
     other-modules:  
 
                      -- dominators
-                      GHC.Cmm.Dominators
---
---                     -- graphs
---                    GHC.Data.Graph.Inductive.Graph
---                    GHC.Data.Graph.Inductive.PatriciaTree
+                    GHC.Cmm.Dominators
+
+                     -- graphs
+                    GHC.Data.Graph.Inductive.Graph
+                    GHC.Data.Graph.Inductive.PatriciaTree
 --
 --                     -- translation
 --                    GHC.Wasm.ControlFlow
