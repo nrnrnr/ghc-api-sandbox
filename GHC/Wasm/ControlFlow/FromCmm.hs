@@ -1,7 +1,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 
-module GHC.Wasm.ControlFlow.Opt
+module GHC.Wasm.ControlFlow.FromCmm
   ( structuredControl
   )
 where
