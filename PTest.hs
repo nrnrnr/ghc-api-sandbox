@@ -5,7 +5,7 @@
 
 module Main where
 
-import Prelude hiding ((<>))
+import Prelude
 
 import Words
 
@@ -40,6 +40,8 @@ import GHC.Cmm.Dominators
 
 --import Debug.Trace
 
+import Options.Applicative hiding (empty)
+
 
 import System.FilePath as FilePath
 
@@ -65,7 +67,8 @@ import GHC.Unit.Home
 import GHC.Utils.Misc (fstOf3)
 import GHC.Unit.Module.ModGuts
 import GHC.Utils.Error
-import GHC.Utils.Outputable
+import GHC.Utils.Outputable hiding ((<>))
+import qualified GHC.Utils.Outputable as Outputable
 import GHC.Utils.Panic
 import GHC.Utils.Ppr (Mode(PageMode))
 
@@ -82,7 +85,7 @@ import GHC.Cmm.Ppr()
 
 import qualified GHC.LanguageExtensions as LangExt
 
-import System.Environment ( getArgs )
+--import System.Environment ( getArgs )
 import System.IO (stdout, stderr, hPutStrLn, hFlush)
 
 import TxTest
@@ -91,7 +94,7 @@ import TxTest
 import GHC.Wasm.Ppr.Control()
 
 libdir :: String
-libdir = "/home/nr/asterius/ghc/_build/stage1/lib"
+libdir = "/home/nr/.ghc-snapshots/current/stage1/lib"
 
 main :: IO ()
 main = showGraph
@@ -99,7 +102,7 @@ main = showGraph
 showGraph :: IO ()
 showGraph = do
     --putStrLn $ "libdir == " ++ thelibdir
-    args <- getArgs
+    controls <- execParser opts
     defaultErrorHandler defaultFatalMessager defaultFlushOut $ do
       runGhc (Just thelibdir) $ do
         raw_dflags <- getSessionDynFlags
@@ -109,28 +112,28 @@ showGraph = do
                          `xopt_set` LangExt.DataKinds
         setSessionDynFlags dflags
         let sdctx = initSDocContext dflags defaultUserStyle
-        mapM_ (processPath sdctx) args
+        mapM_ (processPath sdctx controls) (files controls)
   where thelibdir = libdir
 
-processPath :: SDocContext -> FilePath -> Ghc ()
-processPath context path = do
+processPath :: SDocContext -> Controls -> FilePath -> Ghc ()
+processPath context controls path = do
     liftIO $ putStrLn $ "/*** INPUT: " ++ path ++ " */"
     case takeExtension path of
-      ".hs" -> processHs context path
-      ".cmm" -> processCmm context path
+      ".hs" -> processHs context controls path
+      ".cmm" -> processCmm context controls path
       _ -> liftIO $ hPutStrLn stderr $ "File with unknown extension: " ++ path
     liftIO $ putStrLn $ "/*** END: " ++ path ++ " */"
     liftIO $ putStrLn ""
 
-processHs :: SDocContext -> FilePath -> Ghc ()
-processHs context path = do
+processHs :: SDocContext -> Controls -> FilePath -> Ghc ()
+processHs context controls path = do
   target <- guessTarget path Nothing Nothing
   setTargets [target]
   mgraph <- depanal [] False
-  mapM_ (dumpSummary context) $ mgModSummaries mgraph
+  mapM_ (dumpSummary context controls) $ mgModSummaries mgraph
 
-dumpSummary :: SDocContext -> ModSummary -> GHC.Ghc ()
-dumpSummary context summ = do
+dumpSummary :: SDocContext -> Controls -> ModSummary -> GHC.Ghc ()
+dumpSummary context controls summ = do
   dflags <- getSessionDynFlags
   env <- getSession
   guts <- liftIO $ frontend dflags env summ
@@ -147,7 +150,7 @@ dumpSummary context summ = do
       liftIO $
       collectAll $
       stg_to_cmm dflags (ms_mod summ) infotable tycons ccs stg' hpcinfo
-  liftIO $ mapM_ (dumpGroup context (targetPlatform dflags)) groups
+  liftIO $ mapM_ (dumpGroup context controls (targetPlatform dflags)) groups
 
 frontend :: DynFlags -> HscEnv -> ModSummary -> IO ModGuts
 frontend _dflags env summary = do
@@ -156,12 +159,12 @@ frontend _dflags env summary = do
    hscDesugar env summary checked >>= hscSimplify env []
 
 
-processCmm :: SDocContext -> FilePath -> Ghc ()
-processCmm context path = do
+processCmm :: SDocContext -> Controls -> FilePath -> Ghc ()
+processCmm context controls path = do
   env <- getSession
   dflags <- getSessionDynFlags
   group <- liftIO (slurpCmm env path)
-  liftIO $ dumpGroup context (targetPlatform dflags) group
+  liftIO $ dumpGroup context controls (targetPlatform dflags) group
 
 stgify :: ModSummary -> ModGuts -> Ghc [StgTopBinding]
 stgify summary guts = do
@@ -183,26 +186,50 @@ stgify summary guts = do
 -- control over display
 
 
-langCmm, langWasm, langUnopt, langPeephole :: Bool
-dotViz, codeViz, pathViz, pathResults :: Bool
-nodeSplit :: Bool
-dominatorCheck :: Bool
---hashNodes :: Bool
+data Controls = Controls
+  { lang_cmm :: Bool
+  , lang_wasm :: Bool
+  , lang_unopt :: Bool
+  , lang_peephole :: Bool
 
-langCmm = True
-langWasm = True
-langUnopt = False
-langPeephole = False
+  , viz_dot :: Bool
+  , viz_code :: Bool
+  , viz_path :: Bool
 
-dotViz = False
-codeViz = False
-pathViz = False
-pathResults = True
+  , path_results :: Bool
 
-dominatorCheck = False
+  , dominator_check :: Bool
 
-nodeSplit = False
+  , node_split :: Bool
 
+  , files :: [String]
+  }
+
+options :: Parser Controls
+options = Controls
+  <$> switch ( long "cmm" <> help "visualize/run Cmm" )
+  <*> switch ( long "wasm" <> help "visualize/run optimized Wasm" )
+  <*> switch ( long "unopt" <> help "visualize/run unoptimized Wasm" )
+  <*> switch ( long "peephole" <> help "visualize/run peephole-optimized Wasm" )
+
+  <*> switch ( long "dot" <> help "show dot visualization" )
+  <*> switch ( long "code" <> help "print code" )
+  <*> switch ( long "path" <> help "show paths" )
+
+  <*> switch ( long "results" <> help "show results from running paths" )
+
+  <*> switch ( long "dom" <> long "dominators" <> help "check dominators" )
+
+  <*> switch ( long "split" <> help "show node-splitting" )
+
+  <*> many (argument str (metavar "*.{hs,cmm}"))
+
+opts :: ParserInfo Controls
+opts = info (options <**> helper)
+          (  fullDesc
+          <> progDesc "Run experiments on .hs and .cmm code"
+          <> header "ptest - test bed for compiler stuff"
+          )
 
 
 slurpCmm :: HscEnv -> FilePath -> IO (CmmGroup)
@@ -223,8 +250,8 @@ slurpCmm hsc_env filename = runHsc hsc_env $ do
     return cmm
 
 
-dumpGroup :: SDocContext -> Platform -> CmmGroup -> IO ()
-dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
+dumpGroup :: SDocContext -> Controls -> Platform -> CmmGroup -> IO ()
+dumpGroup context controls platform = mapM_ (decl platform . cmmCfgOptsProc False)
   where decl :: ( OutputableP Platform d
                 , OutputableP Platform h
                 , OutputableP Platform (GenCmmGraph node)
@@ -249,11 +276,11 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
                   mkResults (\p c1 c2 g -> wasmPeepholeOpt $ structuredControl p c1 c2 g)
 
 
-          when (dotViz && langCmm) $ do
+          when (viz_dot controls && lang_cmm controls) $ do
             putStrLn $ "/** ORIGINAL " ++ show r ++ " **/"
             printdoc $ dotCFG blockTag (ppr entry) og_graph
 
-          when (codeViz && langCmm) $ do
+          when (viz_code controls && lang_cmm controls) $ do
             putStrLn "/*********"
             pprout context $ pdoc platform h
             pprout context entry
@@ -262,8 +289,8 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
             putStrLn "*********/"
             hFlush stdout
 
-          when nodeSplit $ do
-            when dotViz $ do
+          when (node_split controls) $ do
+            when (viz_dot controls) $ do
               putStrLn "/* Original graph: */"
               printdoc $
                 dotCFG (hashTag platform) (text "ORIGINAL:" <+> ppr entry) og_graph
@@ -271,7 +298,7 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
               printdoc $
                 dotCFG (hashTag platform) (text "AS REDUCIBLE:" <+> ppr entry) r_graph
               hFlush stdout
-            when codeViz $
+            when (viz_code controls) $
               case r of
                 Irreducible -> do
                   putStrLn "/*********"
@@ -282,7 +309,7 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
                   putStrLn "*********/"
                 Reducible -> putStrLn "/***** original graph was reducible ****/"
 
-          when (codeViz && langUnopt) $ do
+          when (viz_code controls && lang_unopt controls) $ do
             putStrLn "/* ============= Unoptimized wasm "
             let pprCode block = text "CODE:" <+> (fromMaybe (text "?") $ blockTagOO block)
                 code = structuredControl platform (\_ -> id) (\_ -> pprCode) r_graph
@@ -290,7 +317,7 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
             putStrLn "============== end unoptimized */"
             hFlush stdout
 
-          when (codeViz && langWasm) $ do
+          when (viz_code controls && lang_wasm controls) $ do
             putStrLn "/* ^^^^^^^^^^^^^ Optimized wasm "
             let pprCode block = text "CODE:" <+> (fromMaybe (text "?") $ blockTagOO block)
                 code = Opt.structuredControl platform (\_ -> id) (\_ -> pprCode) r_graph
@@ -298,7 +325,7 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
             putStrLn "^^^^^^^^^^^^^^ End optimized */"
             hFlush stdout
 
-          when dominatorCheck $ do
+          when (dominator_check controls) $ do
             putStrLn "/* $-$-$-$-$-$-$ "
             putStrLn $ "  Dominators " ++
                          (if dominatorsPassAllChecks r_graph then "pass" else "FAIL") ++
@@ -306,7 +333,7 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
             mapM_ (putStrLn . showSDocUnsafe . ppr) (dominatorsFailures r_graph)
             putStrLn " $-$-$-$-$-$-$ */"
 
-          when (pathViz && langCmm) $ do
+          when (viz_path controls && lang_cmm controls) $ do
             putStrLn "/* $$$$$$$$$$$$$ "
             putStrLn "   PATHS:"
             let --pprLabel = blockTag . blockLabeled graph
@@ -316,7 +343,7 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
             putStrLn "$$$$$$$$$$$$$$ */"
             hFlush stdout
 
-          when (pathResults && langCmm) $ do
+          when (path_results controls && lang_cmm controls) $ do
             let (results, ios) = unzip $ map analyzeTest $ cmmPathResults r_graph
             putStrLn "/* <<<<<<<<<<<<<<<<< "
             putStrLn $ "Testing CMM " ++ show (length $ cmmPathResults r_graph) ++ " path results"
@@ -325,7 +352,7 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
             putStrLn "   >>>>>>>>>>>>>>>>> */ "
             hFlush stdout
 
-          when (pathResults && langUnopt) $ do
+          when (path_results controls && lang_unopt controls) $ do
             let (results, ios) = unzip $ map analyzeTest $ wasmUnoptResults
             putStrLn "/* ||||||||||||||||||| "
             putStrLn $ "Testing unoptimized Wasm " ++ show (length $ wasmUnoptResults) ++ " path results"
@@ -334,7 +361,7 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
             putStrLn "   |||||||||||||||||| */ "
             hFlush stdout
 
-          when (codeViz && langPeephole) $ do
+          when (viz_code controls && lang_peephole controls) $ do
             putStrLn "/* Peephole: @@@@@@@@@@@@@@@@@@@@ "
             let pprCode block = text "CODE:" <+> (fromMaybe (text "?") $ blockTagOO block)
                 code = wasmPeepholeOpt $
@@ -343,7 +370,7 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
             putStrLn "@@@@@@@@@@@@@@@@@@@ end peephole */"
             hFlush stdout
 
-          when (pathResults && langWasm) $ do
+          when (path_results controls && lang_wasm controls) $ do
             let (results, ios) = unzip $ map analyzeTest $ wasmOptResults
             putStrLn "/* ##################### "
             putStrLn $ "Testing optimized wasm " ++ show (length wasmOptResults) ++ " path results"
@@ -352,7 +379,7 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
             putStrLn "   ##################### */ "
             hFlush stdout
 
-          when (pathResults && langPeephole) $ do
+          when (path_results controls && lang_peephole controls) $ do
             let (results, ios) = unzip $ map analyzeTest $ wasmPeepholeResults
             putStrLn "/* ##################### "
             putStrLn $ "Testing peephole " ++ show (length wasmPeepholeResults) ++ " path results"
@@ -361,7 +388,7 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
             putStrLn "   ##################### */ "
             hFlush stdout
 
-          when nodeSplit $ do
+          when (node_split controls) $ do
             let dump selected graph =
                     printSDocLn context (PageMode True) stdout $
                     dotGraph showInfo selected graph
@@ -382,12 +409,12 @@ dumpGroup context platform = mapM_ (decl platform . cmmCfgOptsProc False)
                        commaCat a b
                            | isEmpty defaultSDocContext a = b
                            | isEmpty defaultSDocContext b = a
-                           | otherwise =  a <> comma <+> b
+                           | otherwise =  a `to` comma <+> b
                        split = render "split" $ splitLabels info
                        unsplit = pprLabels $ setElems $ unsplitLabels info
                        render tag labels =
                            if setNull labels then empty
-                           else text tag <> text ":" <+> pprLabels (setElems labels)
+                           else text tag `to` text ":" <+> pprLabels (setElems labels)
                        pprLabels = pprWithCommas pprLabel
 
             mapM_ showEvent $ collapseCmm og_graph
@@ -508,9 +535,12 @@ blockTagOO b =
 blockTag :: Block CmmNode C C -> SDoc
 blockTag = blockTag' (text ": ...")
 
+to :: SDoc -> SDoc -> SDoc
+to = (Outputable.<>)
+
 blockTagX :: Block CmmNode C C -> SDoc
 blockTagX b = case blockTagOO $ blockBody b of
-                Just doc -> doc <> parens (ppr (entryLabel b))
+                Just doc -> doc `to` parens (ppr (entryLabel b))
                 Nothing -> ppr (entryLabel b)
 
 blockTag' :: SDoc -> Block CmmNode C C -> SDoc
