@@ -28,7 +28,7 @@ import GHC.Utils.Outputable (Outputable, text, (<+>), ppr
                             , pprWithCommas
                             )
 
-import GHC.Wasm.Paper
+import Attic.PaperLang
 
 -- | Abstracts the kind of control flow we understand how to convert.
 -- A block can be left unconditionally, conditionally on a predicate

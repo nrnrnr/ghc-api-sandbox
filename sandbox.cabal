@@ -81,7 +81,6 @@ executable ptest
                     GHC.Cmm.ControlFlow.Run
                     GHC.Wasm.ControlFlow.Collapse
                     GHC.Cmm.Collapse
-                    GHC.Wasm.Paper
                     GHC.Data.Graph.Inductive
                     GHC.Data.Graph.Inductive.PatriciaTree
                     FlowTest
@@ -94,8 +93,9 @@ executable ptest
                     Attic.FlowCollapse
                     Attic.LoopInfo
                     Attic.UnoptControlTx
-                    Attic.PaperTx
+                    Attic.PaperLang
                     Attic.PaperRun
+                    Attic.PaperTx
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:

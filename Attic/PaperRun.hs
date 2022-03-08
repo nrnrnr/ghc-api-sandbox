@@ -8,7 +8,7 @@ module Attic.PaperRun
 where
 
 import GHC.Cmm.Dataflow.Label
-import GHC.Wasm.Paper
+import Attic.PaperLang
 
 import GHC.Test.ControlMonad
 

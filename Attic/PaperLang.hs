@@ -3,7 +3,7 @@
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module GHC.Wasm.Paper
+module Attic.PaperLang
   ( WasmControl(..)
   , BrTableInterval(..), inclusiveInterval
   , pattern WasmExit, pattern WasmContinue
@@ -23,10 +23,10 @@ import GHC.Utils.Panic
 
 
 -- [Note block types]
--- 
+--
 -- WebAssembly blocks are normally labeled with a function type,
--- which specifies what values the block expects to find on the 
--- WebAssembly evaluation stack and what values it promises to 
+-- which specifies what values the block expects to find on the
+-- WebAssembly evaluation stack and what values it promises to
 -- leave there.  Those types do not appear in this representation.
 -- The representation assumes that either the stack is left
 -- unchanged by every block (Wasm type `[] -> []`) or that if
@@ -85,5 +85,3 @@ instance Semigroup (WasmControl s) where
 
 --labelAs :: Labeled a -> b -> Labeled b
 --labelAs la b = fmap (const b) la
-
-
