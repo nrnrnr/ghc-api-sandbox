@@ -32,7 +32,7 @@ executable ptest
     other-modules:  
 
                      -- dominators
---                    GHC.Cmm.Dominators
+                      GHC.Cmm.Dominators
 --
 --                     -- graphs
 --                    GHC.Data.Graph.Inductive.Graph
