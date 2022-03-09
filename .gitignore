@@ -11,3 +11,6 @@
 /??.dot
 /*.dot
 /*.pdf
+/*osandbox.cabal
+/*ohie.yaml
+/*ocabal.project.local

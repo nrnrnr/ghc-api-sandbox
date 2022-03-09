@@ -1,0 +1,14 @@
+#!/usr/bin/env lua5.1-courseware
+
+require 'catpattern'.run(arg,
+  function(fd)
+    for l in fd:lines() do
+      if l:find '^panic%!' then
+        return
+      else
+        io.stdout:write(l, '\n')
+      end
+    end
+  end)
+
+  
