@@ -47,31 +47,31 @@ executable ptest
                     GHC.Wasm.ControlFlow
                     GHC.Wasm.ControlFlow.FromCmm
 
---                     -- testing
---                    GHC.Wasm.Ppr.Control
---                    GHC.Test.ControlMonad
---                    GHC.Test.ControlMonad.QC
---                    GHC.Test.CmmPaths
---                    GHC.Cmm.ControlFlow.Run
---                    GHC.Wasm.ControlFlow.Run
---                    GHC.Cmm.Dominators.Lint
---
---                    FlowTest
---                    StgToCmmLite
---                    DotCfg
---                    DotGraph
---                    Words
---                    TxTest
---
---                     -- attic
---                    Attic.Dominators
---                    Attic.Opt
---                    Attic.FlowCollapse
---                    Attic.LoopInfo
---                    Attic.UnoptControlTx
---                    Attic.PaperLang
---                    Attic.PaperRun
---                    Attic.PaperTx
+                     -- testing
+                    GHC.Wasm.Ppr.Control
+                    GHC.Test.ControlMonad
+                    GHC.Test.ControlMonad.QC
+                    GHC.Test.CmmPaths
+                    GHC.Cmm.ControlFlow.Run
+                    GHC.Wasm.ControlFlow.Run
+                    GHC.Cmm.Dominators.Lint
+
+                    FlowTest
+                    StgToCmmLite
+                    DotCfg
+                    DotGraph
+                    Words
+                    TxTest
+
+                     -- attic
+                    Attic.Dominators
+                    Attic.Opt
+                    Attic.FlowCollapse
+                    Attic.LoopInfo
+                    Attic.UnoptControlTx
+                    Attic.PaperLang
+                    Attic.PaperRun
+                    Attic.PaperTx
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
