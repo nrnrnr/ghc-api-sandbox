@@ -37,15 +37,15 @@ executable ptest
                      -- graphs
                     GHC.Data.Graph.Inductive.Graph
                     GHC.Data.Graph.Inductive.PatriciaTree
---
---                     -- translation
---                    GHC.Wasm.ControlFlow
---                    GHC.Wasm.ControlFlow.FromCmm
 
                      -- node splitting
                     GHC.Data.Graph.Collapse
                     GHC.Cmm.Collapse
                     GHC.Cmm.Reducibility
+
+                     -- translation
+                    GHC.Wasm.ControlFlow
+                    GHC.Wasm.ControlFlow.FromCmm
 
 --                     -- testing
 --                    GHC.Wasm.Ppr.Control
