@@ -22,19 +22,25 @@ import GHC.Test.ControlMonad
 import GHC.Utils.Panic
 
 
-evalGraph :: forall m . ControlTestMonad Label Label m => CmmGraph -> m ()
-evalGraph g = run (g_entry g)
+evalGraph :: forall stmt exp m .
+             ControlTestMonad stmt exp m
+            => (CmmBlock -> stmt)
+            -> (CmmBlock -> exp)
+            -> CmmGraph
+            -> m ()
+evalGraph stmt exp g = run (g_entry g)
   where GMany NothingO blockmap NothingO = g_graph g
         run :: Label -> m ()
         run label = do
-          takeAction @Label @Label label
+          takeAction @stmt @exp (stmt (blockOf label))
           case lastNode (blockOf label) of
             CmmBranch l -> run l
             CmmCondBranch _ t f _ -> do
-                      b <- evalPredicate @Label @Label label
+                      b <- evalPredicate @stmt @exp (exp (blockOf label))
                       run (if b then t else f)
             CmmSwitch _ targets -> do
-                      i <- evalEnum @Label @Label label $ extendRight $ switchTargetsRange targets
+                      i <- evalEnum @stmt @exp (exp (blockOf label)) $
+                           extendRight $ switchTargetsRange targets
                       run $ labelIn i targets
 
             CmmCall { cml_cont = Just l } -> run l
