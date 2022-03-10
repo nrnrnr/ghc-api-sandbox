@@ -23,7 +23,7 @@ import GHC.Test.ControlMonad
 
 import GHC.Utils.Panic
 
-type Path' = [Event Label]
+type Path' = [Event Label Label]
 type APath event = [event]
 
 class NonLocal node => PathTrackable node event where
@@ -56,7 +56,7 @@ eventPaths g = map reverse $ pathsPrefixed (g_entry g) [] setEmpty
 
 
 
-_oldEventpaths :: CmmGraph ->  [[Event Label]]
+_oldEventpaths :: CmmGraph ->  [[Event Label Label]]
 _oldEventpaths g = map reverse $ pathsPrefixed (g_entry g) [] setEmpty
   where pathsPrefixed :: Label -> Path' -> LabelSet -> [Path']
             -- ^ returns a list of all _short_ paths that begin with (block : prefix),
@@ -77,12 +77,12 @@ _oldEventpaths g = map reverse $ pathsPrefixed (g_entry g) [] setEmpty
 
         CmmGraph { g_graph = GMany NothingO blockmap NothingO } = g
 
-instance PathTrackable CmmNode (Event Label) where
+instance PathTrackable CmmNode (Event Label Label) where
   blockBodyEvent b = Action (entryLabel b)
   blockExitEvents = cmmExits
 
 
-cmmExits :: CmmBlock -> [(Maybe (Event Label), Label)]
+cmmExits :: CmmBlock -> [(Maybe (Event Label Label), Label)]
 cmmExits b =
     case lastNode b of
       CmmBranch l -> [(Nothing, l)]

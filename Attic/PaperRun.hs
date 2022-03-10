@@ -1,6 +1,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Attic.PaperRun
   ( evalWasm
@@ -27,8 +28,8 @@ import GHC.Test.ControlMonad
 
 data Frame s = EndLoop s | EndBlock | EndIf | Run s
 
-evalWasm :: ControlTestMonad Label m => WasmControl Label -> m ()
-run  :: forall m . ControlTestMonad Label m => Stack Label -> m ()
+evalWasm :: ControlTestMonad Label Label m => WasmControl Label -> m ()
+run  :: forall m . ControlTestMonad Label Label m => Stack Label -> m ()
 
 type Stack s = [Frame (WasmControl s)]
 
@@ -48,7 +49,7 @@ run (Run s : stack) = step s
         step (WasmBr k') = exit k' stack
 
         step (WasmIf e t f) = do
-          b <- evalPredicate e
+          b <- evalPredicate @Label @Label e
           run (Run (if b then t else f) : EndIf : stack)
 
 --        step (WasmBrIf e k') = do
@@ -57,14 +58,14 @@ run (Run s : stack) = step s
 
         step (WasmBrTable e range targets default') = do
           n <- fromInteger <$>
-               evalEnum e (bti_lo range, bti_lo range + bti_count range)
+               evalEnum @Label @Label e (bti_lo range, bti_lo range + bti_count range)
           if n >= 0 && n < length targets then exit (targets !! n) stack
           else exit default' stack
 
 
         step (WasmReturn) = return ()
 
-        step (WasmSlc s) = takeAction s >> run stack
+        step (WasmSlc s) = takeAction @Label @Label s >> run stack
         step (WasmSeq s s') = run (Run s : Run s' : stack)
 
         exit 0 (EndLoop s : stack) = run (EndLoop s : stack)

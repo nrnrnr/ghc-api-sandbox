@@ -20,9 +20,9 @@ import GHC.Test.ControlMonad
 import GHC.Wasm.ControlFlow
 import GHC.Wasm.ControlFlow.Run
 
-type Trace = [Event Label]
+type Trace = [Event Label Label]
 
-data InterpTest a = IT { it_input :: a, it_output :: FinalState Label () }
+data InterpTest a = IT { it_input :: a, it_output :: FinalState Label Label () }
   deriving (Show)
 
 cmmPathResults :: CmmGraph -> [InterpTest Trace]

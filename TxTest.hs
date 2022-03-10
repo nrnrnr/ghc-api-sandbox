@@ -91,7 +91,7 @@ data Language a event =
 txTest :: Language a event -> Language b event -> [event] -> a -> b -> TestResult
 txTest = undefined
 
-analyzeTest :: InterpTest [Event Label] -> (TestResult, IO ())
+analyzeTest :: InterpTest [Event Label Label] -> (TestResult, IO ())
 analyzeTest t =
     if tracesMatch t then
         (Good, putStrLn $ "EXACT: " ++ show (it_input t))

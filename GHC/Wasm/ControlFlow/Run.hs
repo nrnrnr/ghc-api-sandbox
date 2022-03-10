@@ -1,6 +1,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TypeApplications #-}
 
 module GHC.Wasm.ControlFlow.Run
   ( evalWasm
@@ -29,8 +30,8 @@ import GHC.Test.ControlMonad
 
 data Frame s = EndLoop s | EndBlock | EndIf | Run s
 
-evalWasm :: ControlTestMonad Label m => WasmStmt s e -> m ()
-run  :: forall s e m . ControlTestMonad Label m => Stack s e -> m ()
+evalWasm :: ControlTestMonad Label Label m => WasmStmt s e -> m ()
+run  :: forall s e m . ControlTestMonad Label Label m => Stack s e -> m ()
 
 type Stack s e = [Frame (WasmStmt s e)]
 
@@ -51,23 +52,23 @@ run (Run s : stack) = step s
         step (WasmBr (BranchTyped bty k')) = exit (unL k') bty stack
 
         step (WasmIf e t f) = do
-          b <- evalPredicate $ fromJust $ labelOf e
+          b <- evalPredicate @Label @Label $ fromJust $ labelOf e
           run (Run (if b then t else f) : EndIf : stack)
 
         step (WasmBrIf e (BranchTyped bty k')) = do
-          b <- evalPredicate $ fromJust $ labelOf e
+          b <- evalPredicate @Label @Label $ fromJust $ labelOf e
           if b then exit (unL k') bty stack else run stack
 
         step (WasmBrTable e range targets default') = do
           n <- fromInteger <$>
-               evalEnum (fromJust $ labelOf e) (bti_lo range, bti_lo range + bti_count range)
+               evalEnum @Label @Label (fromJust $ labelOf e) (bti_lo range, bti_lo range + bti_count range)
           if n >= 0 && n < length targets then exit (unL (targets !! n)) ExitBranch stack
           else exit (unL default') ExitBranch stack
 
 
         step (WasmReturn) = return ()
 
-        step (WasmSlc s) = (takeAction $ fromJust $ labelOf s) >> run stack
+        step (WasmSlc s) = (takeAction @Label @Label $ fromJust $ labelOf s) >> run stack
         step (WasmSeq s s') = run (Run s : Run s' : stack)
 
         step (WasmLabel _) = run stack
