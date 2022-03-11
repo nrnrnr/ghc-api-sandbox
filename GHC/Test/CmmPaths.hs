@@ -23,12 +23,12 @@ import GHC.Test.ControlMonad
 
 import GHC.Utils.Panic
 
-type Path' = [Event Label Label]
+--type Path' stmt exp = [Event stmt exp]
 type APath event = [event]
 
 class NonLocal node => PathTrackable node event where
-  blockBodyEvent  :: Block node C C -> event
-  blockExitEvents :: Block node C C -> [(Maybe event, Label)]
+  blockBodyEvent  :: Label -> Block node C C -> event
+  blockExitEvents :: Label -> Block node C C -> [(Maybe event, Label)]
 
 eventPaths :: forall node event .
                PathTrackable node event => GenCmmGraph node -> [[event]]
@@ -42,12 +42,12 @@ eventPaths g = map reverse $ pathsPrefixed (g_entry g) [] setEmpty
           where prefix' = action lbl : prefix
                 visited' = setInsert lbl visited
                 extensions = if setMember lbl visited then [prefix']
-                             else concatMap extend (blockExitEvents $ blockLabeled lbl)
+                             else concatMap extend (blockExitEvents lbl $ blockLabeled lbl)
                 extend (Nothing, lbl) = pathsPrefixed lbl prefix' visited'
                 extend (Just event, lbl) = pathsPrefixed lbl (event : prefix') visited'
 
 
-        action = blockBodyEvent . blockLabeled
+        action lbl = blockBodyEvent lbl (blockLabeled lbl)
         blockLabeled lbl = mapFindWithDefault (panic "missing block") lbl blockmap
 
 
@@ -56,6 +56,7 @@ eventPaths g = map reverse $ pathsPrefixed (g_entry g) [] setEmpty
 
 
 
+{-
 _oldEventpaths :: CmmGraph ->  [[Event Label Label]]
 _oldEventpaths g = map reverse $ pathsPrefixed (g_entry g) [] setEmpty
   where pathsPrefixed :: Label -> Path' -> LabelSet -> [Path']
@@ -76,25 +77,35 @@ _oldEventpaths g = map reverse $ pathsPrefixed (g_entry g) [] setEmpty
 
 
         CmmGraph { g_graph = GMany NothingO blockmap NothingO } = g
+-}
+
+type Labeled a = (Label, a)
+
+instance PathTrackable CmmNode (Event (Labeled (Block CmmNode O O)) (Labeled CmmExpr)) where
+  blockBodyEvent lbl b = Action (lbl, middle (blockSplit b))
+    where middle (_, stmt, _) = stmt
+  blockExitEvents _ = cmmExits
 
 instance PathTrackable CmmNode (Event Label Label) where
-  blockBodyEvent b = Action (entryLabel b)
-  blockExitEvents = cmmExits
+  blockBodyEvent lbl _ = Action lbl
+  blockExitEvents _lbl = map xlabel . cmmExits
+     where xlabel (event, lbl) = (fmap (eventMap id fst) event, lbl)
 
 
-cmmExits :: CmmBlock -> [(Maybe (Event Label Label), Label)]
+cmmExits :: CmmBlock -> [(Maybe (Event stmt (Labeled CmmExpr)), Label)]
 cmmExits b =
     case lastNode b of
       CmmBranch l -> [(Nothing, l)]
-      CmmCondBranch _ t f _ -> [(Just $ Predicate blabel True, t), (Just $ Predicate blabel False, f)]
-      CmmSwitch _ targets ->
+      CmmCondBranch e t f _ -> [(Just $ Predicate (thisExp e) True, t),
+                                (Just $ Predicate (thisExp e) False, f)]
+      CmmSwitch e targets ->
           let (lo, hi) = switchTargetsRange targets
               dests = switchTargetsCases targets
               other = switchTargetsDefault targets
-              caseExit (j, lbl) = (Just $ Switch blabel (lo, hi + 1) j, lbl)
+              caseExit (j, lbl) = (Just $ Switch (thisExp e) (lo, hi + 1) j, lbl)
               defaultExits = case other of
                                Nothing -> []
-                               Just lbl -> [(Just $ Switch blabel (lo, hi + 1) defarg, lbl)]
+                               Just lbl -> [(Just $ Switch (thisExp e) (lo, hi + 1) defarg, lbl)]
               defarg = try lo
                   where try i | i == hi = i
                               | i `elem` caseArgs = try (i + 1)
@@ -107,7 +118,7 @@ cmmExits b =
                                      Nothing -> panic "GHC.Tests.CmmPaths.exit: no default"
                              (_ : _ : _) -> panic "GHC.Tests.CmmPaths.exit: too many matches"
           in  if hi - lo < 10 then
-                [(Just $ Switch blabel (lo, hi + 1) i, labelOf i) | i <- [lo..hi]]
+                [(Just $ Switch (thisExp e) (lo, hi + 1) i, labelOf i) | i <- [lo..hi]]
               else
                   -- as some switch statements go from minBound :: Int to maxBound :: Int
                 defaultExits ++ map caseExit dests
@@ -115,4 +126,4 @@ cmmExits b =
       CmmCall { cml_cont = Just l } -> [(Nothing, l)]
       CmmCall { cml_cont = Nothing } -> []
       CmmForeignCall { succ = l } -> [(Nothing, l)]
-  where blabel = entryLabel b
+  where thisExp e = (entryLabel b, e)

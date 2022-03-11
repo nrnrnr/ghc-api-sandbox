@@ -1,10 +1,13 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module GHC.Test.ControlMonad
   ( ControlTestMonad(..)
   , Event(..)
+  , eventMap
+  , eventsMatch
   , FinalState(..)
   , BitConsuming
   , runWithBits
@@ -33,13 +36,31 @@ data Event stmt exp = Predicate exp Bool
                     | Action stmt
   deriving (Eq)
 
-instance (Outputable e, Outputable s) => Outputable (Event e s) where
-  ppr = text . show
+eventMap :: (s -> a) -> (e -> b) -> Event s e -> Event a b
+eventMap _ exp (Predicate e b) = Predicate (exp e) b
+eventMap _ exp (Switch e range i) = Switch (exp e) range i
+eventMap stmt _ (Action s) = Action (stmt s)
 
-instance (Outputable e, Outputable s) => Show (Event e s) where
-  show (Action l) = showPprUnsafe l
-  show (Predicate l b) = showPprUnsafe l ++ "(" ++ (if b then "T" else "F") ++ ")"
-  show (Switch l (lo,hi) i) =  showPprUnsafe l ++ "(" ++ show i ++ " in [" ++ show lo ++ ".." ++ show hi ++ "])"
+eventsMatch :: (s -> s -> Bool) -> (e -> e -> Bool) -> Event s e -> Event s e -> Bool
+eventsMatch sEq eEq = match
+  where match (Predicate e b) (Predicate e' b') = b == b' && eEq e e'
+        match (Switch e bounds d) (Switch e' bounds' d') =
+            bounds == bounds' && d == d' && eEq e e'
+        match (Action s) (Action s') = sEq s s'
+        match _ _ = False
+
+
+instance (Outputable e, Outputable s) => Outputable (Event e s) where
+  ppr (Action l) = ppr l
+  ppr (Predicate l b) = ppr l <+> parens (if b then "T" else "F")
+  ppr (Switch l (lo,hi) i) =
+      ppr l <+> parens (hcat [text $ show i, " in [", text $ show lo, "..", text $ show hi, "]"])
+
+
+instance (Show e, Show s) => Show (Event e s) where
+  show (Action l) = show l
+  show (Predicate l b) = show l ++ "(" ++ (if b then "T" else "F") ++ ")"
+  show (Switch l (lo,hi) i) =  show l ++ "(" ++ show i ++ " in [" ++ show lo ++ ".." ++ show hi ++ "])"
 
 
 traceBits :: [Event a b] -> [Bool]
@@ -54,7 +75,7 @@ data FinalState stmt exp a
     | Halted { pastEvents :: [Event stmt exp] }
     | Failed { pastEvents :: [Event stmt exp], msg :: String }
 
-instance (Outputable exp, Outputable stmt, Show a) => Show (FinalState stmt exp a) where
+instance (Show exp, Show stmt, Show a) => Show (FinalState stmt exp a) where
   show (Produced events a) = show events ++ " -> " ++ show a
   show (Halted events) = show events ++ " EXHAUSTS"
   show (Failed events msg) = show events ++ "  FAILED: " ++ msg

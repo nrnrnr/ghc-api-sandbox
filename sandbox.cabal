@@ -69,7 +69,7 @@ executable ptest
                     Attic.FlowCollapse
                     Attic.LoopInfo
                     Attic.UnoptControlTx
-                    Attic.PaperLang
+                    Attic.LabeledWasmLang
                     Attic.PaperRun
                     Attic.PaperTx
 

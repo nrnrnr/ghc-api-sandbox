@@ -86,23 +86,22 @@ structuredControl :: forall e s .
                   -> (Label -> CmmExpr -> e) -- ^ translator for expressions
                   -> (Label -> Block CmmNode O O -> s) -- ^ translator for straight-line code
                   -> CmmGraph -- ^ CFG to be translated
-                  -> WasmStmt s e
+                  -> WasmControl s e
 structuredControl platform txExpr txBlock g =
    if paranoidFlow && hasBlock isSwitchWithoutDefault g then -- see Note [Paranoid flow]
-       wasmUnlabeled WasmBlock
+       WasmBlock
        (doNode (blockLabeled (g_entry g)) (BlockFollowedByTrap `inside` emptyContext)) <>
        WasmUnreachable
    else
        doNode (blockLabeled (g_entry g)) emptyContext
  where
-   doNode     :: CmmBlock               -> Context -> WasmStmt s e
-   nestWithin :: CmmBlock -> [CmmBlock] -> Maybe Label -> Context -> WasmStmt s e
-   doBranch   :: Label -> Label         -> Context -> WasmStmt s e
+   doNode     :: CmmBlock               -> Context -> WasmControl s e
+   nestWithin :: CmmBlock -> [CmmBlock] -> Maybe Label -> Context -> WasmControl s e
+   doBranch   :: Label -> Label         -> Context -> WasmControl s e
 
    doNode x context =
        let codeForX = nestWithin x (dominatees x) Nothing
        in  if isHeader x then
-             wasmLabeled (entryLabel x)
              WasmLoop (codeForX context')
            else
              codeForX context
@@ -115,39 +114,38 @@ structuredControl platform txExpr txBlock g =
      -- (In Peterson, this is case 1 step 2, which I do before step 1)
 
    nestWithin x (y_n:ys) (Just zlabel) context =
-       wasmLabeled zlabel WasmBlock $ nestWithin x (y_n:ys) Nothing context'
+       WasmBlock $ nestWithin x (y_n:ys) Nothing context'
      where context' = BlockFollowedBy zlabel `inside` context
    nestWithin x (y_n:ys) Nothing context =
        nestWithin x ys (Just ylabel) (context `withFallthrough` ylabel) <> doNode y_n context
      where ylabel = entryLabel y_n
    nestWithin x [] (Just zlabel) context
      | not (generatesIf x) =
-         wasmLabeled zlabel WasmBlock (nestWithin x [] Nothing context')
+         WasmBlock (nestWithin x [] Nothing context')
      where context' = BlockFollowedBy zlabel `inside` context
    nestWithin x [] maybeMarks context =
-       WasmLabel (Labeled xlabel undefined) <> translationOfX context
+       translationOfX context
 
      -- (In Peterson, translationOfX combines case 1 step 6, case 2 step 1, case 2 step 3)
-     where translationOfX :: Context -> WasmStmt s e
+     where translationOfX :: Context -> WasmControl s e
            translationOfX context =
-             wasmLabeled xlabel WasmSlc (txBlock xlabel (nodeBody x)) <>
+             WasmSlc (txBlock xlabel (nodeBody x)) <>
              case flowLeaving platform x of
                Unconditional l -> doBranch xlabel l context -- Peterson: case 1 step 6
                Conditional e t f -> -- Peterson: case 1 step 5
-                 wasmLabeled xlabel WasmIf
-                      (txExpr xlabel e)
-                      (doBranch xlabel t (IfThenElse maybeMarks `inside` context))
-                      (doBranch xlabel f (IfThenElse maybeMarks `inside` context))
+                 WasmIf (txExpr xlabel e)
+                        (doBranch xlabel t (IfThenElse maybeMarks `inside` context))
+                        (doBranch xlabel f (IfThenElse maybeMarks `inside` context))
                TerminalFlow -> WasmReturn
                   -- Peterson: case 1 step 6, case 2 steps 2 and 3
                Switch e range targets default' ->
-                   wasmLabeled xlabel WasmBrTable (txExpr xlabel e)
-                                                  range
-                                                  (map switchIndex targets)
-                                                  (switchIndex default')
-            where switchIndex :: Maybe Label -> Labeled Int
-                  switchIndex Nothing = wasmUnlabeled id nothingIndex
-                  switchIndex (Just lbl) = wasmLabeled lbl id (index lbl (enclosing context))
+                   WasmBrTable (txExpr xlabel e)
+                               range
+                               (map switchIndex targets)
+                               (switchIndex default')
+            where switchIndex :: Maybe Label -> Int
+                  switchIndex Nothing = nothingIndex
+                  switchIndex (Just lbl) = index lbl (enclosing context)
                   nothingIndex = if paranoidFlow then trapIndex (enclosing context) else 0
 
            xlabel = entryLabel x
@@ -159,9 +157,9 @@ structuredControl platform txExpr txBlock g =
    -- In Peterson, `doBranch` implements case 2 (and part of case 1)
    doBranch from to context
       | to `elem` fallthrough context = mempty -- WasmComment "eliminated branch"
-      | isBackward from to = WasmContinue to i
+      | isBackward from to = WasmBr i -- continue
            -- Peterson: case 1 step 4
-      | isMergeLabel to = WasmExit to i
+      | isMergeLabel to = WasmBr i -- exit
       | otherwise = doNode (blockLabeled to) context
      where i = index to (enclosing context)
 

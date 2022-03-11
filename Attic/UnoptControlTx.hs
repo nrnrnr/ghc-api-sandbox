@@ -62,10 +62,10 @@ structuredControl :: forall e s .
                   -> (Label -> CmmExpr -> e) -- ^ translator for expressions
                   -> (Label -> Block CmmNode O O -> s) -- ^ translator for straight-line code
                   -> CmmGraph -- ^ CFG to be translated
-                  -> WasmStmt s e
+                  -> WasmControl s e
 structuredControl platform txExpr txBlock g =
    if hasBlock isSwitchWithoutDefault g then -- see Note [Paranoid flow]
-       wasmUnlabeled WasmBlock (doBlock (blockLabeled (g_entry g)) [BlockFollowedByTrap]) <>
+       WasmBlock (doBlock (blockLabeled (g_entry g)) [BlockFollowedByTrap]) <>
        WasmUnreachable
    else
        doBlock (blockLabeled (g_entry g)) []
@@ -86,13 +86,13 @@ structuredControl platform txExpr txBlock g =
    -- And `doBranch` implements a control transfer, which may be
    -- implemented by falling through or by a `br` instruction.
 
-   doBlock  :: CmmBlock               -> Context -> WasmStmt s e
-   doExits  :: CmmBlock -> [CmmBlock] -> Context -> WasmStmt s e
-   doBranch :: Label -> Label         -> Context -> WasmStmt s e
+   doBlock  :: CmmBlock               -> Context -> WasmControl s e
+   doExits  :: CmmBlock -> [CmmBlock] -> Context -> WasmControl s e
+   doBranch :: Label -> Label         -> Context -> WasmControl s e
 
    doBlock x context =
        if isHeader xlabel then
-           wasmLabeled xlabel WasmLoop (emitBlockX (LoopHeadedBy xlabel : context))
+           WasmLoop (emitBlockX (LoopHeadedBy xlabel : context))
        else
            emitBlockX context
      where xlabel = entryLabel x
@@ -103,12 +103,12 @@ structuredControl platform txExpr txBlock g =
      -- (In Peterson, this is case 1 step 2, which I do before step 1)
 
    doExits x (y:ys) context =
-       wasmLabeled ylabel WasmBlock (doExits x ys (BlockFollowedBy ylabel : context)) <>
+       WasmBlock (doExits x ys (BlockFollowedBy ylabel : context)) <>
        doBlock y context
      where ylabel = entryLabel y
    doExits x [] context =
        -- trace ("Block " ++ showSDocUnsafe (ppr xlabel) ++ headerStatus ++ " in context " ++ showSDocUnsafe (ppr context)) $
-       WasmLabel (Labeled xlabel undefined) <> emitBlockX context
+       emitBlockX context
 
      -- (In Peterson, emitBlockX combines case 1 step 6, case 2 step 1, case 2 step 3)
      where emitBlockX context =
@@ -116,20 +116,20 @@ structuredControl platform txExpr txBlock g =
              case flowLeaving platform x of
                Unconditional l -> doBranch xlabel l context -- Peterson: case 1 step 6
                Conditional e t f -> -- Peterson: case 1 step 5
-                 wasmLabeled xlabel WasmIf
+                 WasmIf
                       (txExpr xlabel e)
                       (doBranch xlabel t (IfThenElse xlabel : context))
                       (doBranch xlabel f (IfThenElse xlabel : context))
                TerminalFlow -> WasmReturn
                   -- Peterson: case 1 step 6, case 2 steps 2 and 3
                Switch e range targets default' ->
-                   wasmLabeled xlabel WasmBrTable (txExpr xlabel e)
+                   WasmBrTable (txExpr xlabel e)
                                                   range
                                                   (map switchIndex targets)
                                                   (switchIndex default')
-            where switchIndex :: Maybe Label -> Labeled Int
-                  switchIndex Nothing = wasmUnlabeled id (trapIndex context)
-                  switchIndex (Just lbl) = wasmLabeled lbl id (index' lbl context)
+            where switchIndex :: Maybe Label -> Int
+                  switchIndex Nothing = trapIndex context
+                  switchIndex (Just lbl) = index' lbl context
 
 
            xlabel = entryLabel x
@@ -138,9 +138,9 @@ structuredControl platform txExpr txBlock g =
 
    -- In Peterson, `doBranch` implements case 2 (and part of case 1)
    doBranch from to context
-      | isBackward from to = WasmContinue to i
+      | isBackward from to = WasmBr i
            -- Peterson: case 1 step 4
-      | isMergeLabel to = WasmExit to i
+      | isMergeLabel to = WasmBr i
       | otherwise = doBlock (blockLabeled to) context
      where i = index' to context
 
@@ -165,8 +165,8 @@ structuredControl platform txExpr txBlock g =
      -- ^ Domination relation (not just immediate domination)
 
    -- | Translate straightline code, which is uninterpreted except by `txBlock`.
-   codeBody :: Label -> Block CmmNode C C -> WasmStmt s e
-   codeBody lbl (BlockCC _first middle _last) = wasmLabeled lbl WasmSlc (txBlock lbl middle)
+   codeBody :: Label -> Block CmmNode C C -> WasmControl s e
+   codeBody lbl (BlockCC _first middle _last) = WasmSlc (txBlock lbl middle)
 
 
 

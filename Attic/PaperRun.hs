@@ -9,7 +9,7 @@ module Attic.PaperRun
 where
 
 import GHC.Cmm.Dataflow.Label
-import Attic.PaperLang
+import GHC.Wasm.ControlFlow
 
 import GHC.Test.ControlMonad
 
@@ -28,10 +28,10 @@ import GHC.Test.ControlMonad
 
 data Frame s = EndLoop s | EndBlock | EndIf | Run s
 
-evalWasm :: ControlTestMonad Label Label m => WasmControl Label -> m ()
+evalWasm :: ControlTestMonad Label Label m => WasmControl Label Label -> m ()
 run  :: forall m . ControlTestMonad Label Label m => Stack Label -> m ()
 
-type Stack s = [Frame (WasmControl s)]
+type Stack s = [Frame (WasmControl s s)]
 
 evalWasm s = run [Run s]
 
@@ -41,9 +41,9 @@ run (EndLoop s : stack) = run (Run s : EndLoop s : stack)
 run (EndBlock : stack) = run stack
 run (EndIf : stack) = run stack
 run (Run s : stack) = step s
-  where step :: WasmControl Label -> m ()
---        step WasmNop = run stack
---        step (WasmUnreachable) = fail "unreachable"
+  where step :: WasmControl Label Label -> m ()
+        step WasmNop = run stack
+        step (WasmUnreachable) = fail "unreachable"
         step (WasmBlock s) = run (Run s : EndBlock : stack)
         step (WasmLoop s) = run (Run s : EndLoop s : stack)
         step (WasmBr k') = exit k' stack

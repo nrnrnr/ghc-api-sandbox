@@ -91,7 +91,15 @@ data Language a event =
 txTest :: Language a event -> Language b event -> [event] -> a -> b -> TestResult
 txTest = undefined
 
-analyzeTest :: (Eq s, Eq e, Outputable s, Outputable e) => InterpTest s e [Event s e] -> (TestResult, IO ())
+data TADict s e = TADict { s_string :: s -> String
+                         , e_string :: e -> String
+                         , eq_s :: s -> s -> Bool
+                         , eq_e :: e -> e -> Bool
+                         }
+
+analyzeTest :: (Show s, Show e, Eq s, Eq e)
+            => InterpTest s e [Event s e]
+            -> (TestResult, IO ())
 analyzeTest t =
     if tracesMatch t then
         (Good, putStrLn $ "EXACT: " ++ show (it_input t))
@@ -107,10 +115,11 @@ analyzeTest t =
   where diffPos t = badIndex (0::Int) (it_input t) (pastEvents (it_output t))
         badIndex k [] [] = "PERFECT MATCH at " ++ show k
         badIndex k (e:es) (e':es')
-           | e == e' = badIndex (k+1) es es'
+           | eventsMatch (==) (==) e e' = badIndex (k+1) es es'
            | otherwise = show k ++ " (" ++ show e ++ " vs " ++ show e' ++ ")"
         badIndex k [] (_:_) = show k ++ " (input runs out first)"
         badIndex k (_:_) [] = show k ++ " (output runs out first)"
+
 
 
 

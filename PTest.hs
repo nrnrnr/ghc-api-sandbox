@@ -12,6 +12,7 @@ import Words
 import Crypto.Hash.SHA1
 
 import Data.ByteString.UTF8 (ByteString, fromString)
+--import Data.Function
 import Data.Maybe
 import Data.List hiding (foldl)
 
@@ -344,7 +345,7 @@ dumpGroup context controls platform = mapM_ (decl platform . cmmCfgOptsProc Fals
             hFlush stdout
 
           when (path_results controls && lang_cmm controls) $ do
-            let (results, ios) = unzip $ map analyzeTest $ cmmPathResults r_graph
+            let (results, ios) = unzip $ map analyzeLabelTest $ cmmPathResults r_graph
             putStrLn "/* <<<<<<<<<<<<<<<<< "
             putStrLn $ "Testing CMM " ++ show (length $ cmmPathResults r_graph) ++ " path results"
             putStrLn $ "CMM:  " ++ resultReport results
@@ -353,7 +354,7 @@ dumpGroup context controls platform = mapM_ (decl platform . cmmCfgOptsProc Fals
             hFlush stdout
 
           when (path_results controls && lang_unopt controls) $ do
-            let (results, ios) = unzip $ map analyzeTest $ wasmUnoptResults
+            let (results, ios) = unzip $ map analyzeLabelTest $ wasmUnoptResults
             putStrLn "/* ||||||||||||||||||| "
             putStrLn $ "Testing unoptimized Wasm " ++ show (length $ wasmUnoptResults) ++ " path results"
             putStrLn $ "Wasm: " ++ resultReport results
@@ -371,7 +372,7 @@ dumpGroup context controls platform = mapM_ (decl platform . cmmCfgOptsProc Fals
             hFlush stdout
 
           when (path_results controls && lang_wasm controls) $ do
-            let (results, ios) = unzip $ map analyzeTest $ wasmOptResults
+            let (results, ios) = unzip $ map analyzeLabelTest $ wasmOptResults
             putStrLn "/* ##################### "
             putStrLn $ "Testing optimized wasm " ++ show (length wasmOptResults) ++ " path results"
             putStrLn $ "Optimized wasm: " ++ resultReport results
@@ -380,7 +381,7 @@ dumpGroup context controls platform = mapM_ (decl platform . cmmCfgOptsProc Fals
             hFlush stdout
 
           when (path_results controls && lang_peephole controls) $ do
-            let (results, ios) = unzip $ map analyzeTest $ wasmPeepholeResults
+            let (results, ios) = unzip $ map analyzeLabelTest $ wasmPeepholeResults
             putStrLn "/* ##################### "
             putStrLn $ "Testing peephole " ++ show (length wasmPeepholeResults) ++ " path results"
             putStrLn $ "Peep: " ++ resultReport results
@@ -572,3 +573,9 @@ hashBlock platform b = hash $ fromString s
 
 hashTag :: Platform -> Block CmmNode C C -> SDoc
 hashTag platform = sep . map text . take 2 . natWords . bsNat . hashBlock platform
+
+analyzeLabelTest :: (Show a, Show b, Eq a, Eq b)
+                 => InterpTest a b [Event a b]
+                 -> (TestResult, IO ())
+
+analyzeLabelTest = analyzeTest

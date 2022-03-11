@@ -11,29 +11,31 @@ where
 
 import Prelude hiding ((<>))
 
-import GHC.Utils.Panic
 import GHC.Utils.Outputable
 import GHC.Wasm.ControlFlow
 
 
 data LabeledView a = LV SDoc a
 
-lview :: Labeled a -> LabeledView a
-lview la = LV (render (labelOf la)) (withoutLabel la)
-  where render Nothing = text "-"
-        render (Just l) = ppr l
+--lview :: Labeled a -> LabeledView a
+--lview la = LV (render (labelOf la)) (withoutLabel la)
+--  where render Nothing = text "-"
+--        render (Just l) = ppr l
+
+lview :: a -> LabeledView a
+lview la = LV (text "-") la
 
 
 
 
-instance (OutputableP env s, OutputableP env e) => OutputableP env (WasmStmt s e) where
+instance (OutputableP env s, OutputableP env e) => OutputableP env (WasmControl s e) where
   pdoc = pprStmt
 
-pprStmt :: (OutputableP env s, OutputableP env e) => env -> WasmStmt s e -> SDoc
+pprStmt :: (OutputableP env s, OutputableP env e) => env -> WasmControl s e -> SDoc
 
 pprStmt _ WasmNop = text "nop"
 
-pprStmt _ (WasmComment c) = text "/*" <+> text c <+> text "*/"
+-- pprStmt _ (WasmComment c) = text "/*" <+> text c <+> text "*/"
 
 pprStmt _ WasmUnreachable = text "unreachable"
 
@@ -55,12 +57,12 @@ pprStmt env (WasmIf (lview -> LV _ e) t f) =
     nest smallindent (pprStmt env f) $+$
     text "end ;; if"
 
-pprStmt _ (WasmBr (BranchTyped ty (lview -> LV l i))) =
-    text "br" <+> int i <+> comment (ppr ty <+> text "to" <+> l)
+pprStmt _ (WasmBr (lview -> LV l i)) =
+    text "br" <+> int i <+> comment (text "to" <+> l)
 
-pprStmt env (WasmBrIf (lview -> LV _ e) (BranchTyped ty (lview -> LV l i))) =
-    pdoc env e $+$
-    text "br_if" <+> int i <+> comment (ppr ty <+> text "to" <+> l)
+--pprStmt env (WasmBrIf (lview -> LV _ e) (lview -> LV l i)) =
+--    pdoc env e $+$
+--    text "br_if" <+> int i <+> comment (text "to" <+> l)
 
 pprStmt env (WasmBrTable (lview -> LV _ e) range targets default') =
     pdoc env e <+> comment (ppr range) $+$
@@ -72,15 +74,11 @@ pprStmt _ WasmReturn = text "return"
 pprStmt env (WasmSlc (lview -> LV _ s)) = pdoc env s
 pprStmt env (WasmSeq a b) = pprStmt env a $+$ pprStmt env b
 
-pprStmt _ (WasmLabel lv)
-        | Just l <- labelOf lv = comment (ppr l <> text ":")
-        | otherwise = panic "label statement has no label"
+--pprStmt _ (WasmLabel lv)
+--        | Just l <- labelOf lv = comment (ppr l <> text ":")
+--        | otherwise = panic "label statement has no label"
 
 
-
-instance Outputable BranchType where
-  ppr ExitBranch = text "exit"
-  ppr ContinueBranch = text "continue"
 
 comment :: SDoc -> SDoc -- ^ Wasm block comment
 comment l = text "(;" <> l <> text ";)"

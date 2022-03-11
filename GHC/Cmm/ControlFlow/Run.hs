@@ -24,22 +24,22 @@ import GHC.Utils.Panic
 
 evalGraph :: forall stmt exp m .
              ControlTestMonad stmt exp m
-            => (CmmBlock -> stmt)
-            -> (CmmBlock -> exp)
+            => (Label -> Block CmmNode O O -> stmt)
+            -> (Label -> CmmExpr -> exp)
             -> CmmGraph
             -> m ()
 evalGraph stmt exp g = run (g_entry g)
   where GMany NothingO blockmap NothingO = g_graph g
         run :: Label -> m ()
         run label = do
-          takeAction @stmt @exp (stmt (blockOf label))
+          takeAction @stmt @exp (stmt label (actionOf label))
           case lastNode (blockOf label) of
             CmmBranch l -> run l
-            CmmCondBranch _ t f _ -> do
-                      b <- evalPredicate @stmt @exp (exp (blockOf label))
+            CmmCondBranch e t f _ -> do
+                      b <- evalPredicate @stmt @exp (exp label e)
                       run (if b then t else f)
-            CmmSwitch _ targets -> do
-                      i <- evalEnum @stmt @exp (exp (blockOf label)) $
+            CmmSwitch e targets -> do
+                      i <- evalEnum @stmt @exp (exp label e) $
                            extendRight $ switchTargetsRange targets
                       run $ labelIn i targets
 
@@ -49,6 +49,10 @@ evalGraph stmt exp g = run (g_entry g)
 
         blockOf lbl =
              mapFindWithDefault (panic "GHC.Cmm.ControlFlow.Run.eval") lbl blockmap
+        actionOf lbl = middle
+            where (_, middle, _) = blockSplit $ blockOf lbl
+
+
 
 extendRight :: Integral n => (n, n) -> (n, n)
 extendRight (lo, hi) = (lo, hi + 1)

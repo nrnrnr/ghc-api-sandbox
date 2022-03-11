@@ -28,7 +28,7 @@ import GHC.Utils.Outputable (Outputable, text, (<+>), ppr
                             , pprWithCommas
                             )
 
-import Attic.PaperLang
+import GHC.Wasm.ControlFlow
 
 -- | Abstracts the kind of control flow we understand how to convert.
 -- A block can be left unconditionally, conditionally on a predicate
@@ -61,7 +61,7 @@ structuredControl :: forall s .
                      (Label -> CmmExpr -> s) -- ^ translator for expressions
                   -> (Label -> Block CmmNode O O -> s) -- ^ translator for straight-line code
                   -> CmmGraph -- ^ CFG to be translated
-                  -> WasmControl s
+                  -> WasmControl s s
 structuredControl txExpr txBlock g = doNode (blockLabeled (g_entry g)) []
  where
    -- Tragic fact: To Cmm, a "block" is a basic block, but to Wasm,
@@ -80,9 +80,9 @@ structuredControl txExpr txBlock g = doNode (blockLabeled (g_entry g)) []
    -- And `doBranch` implements a control transfer, which may be
    -- implemented by falling through or by a `br` instruction.
 
-   doNode  :: CmmBlock               -> Context -> WasmControl s
-   nestWithin  :: CmmBlock -> [CmmBlock] -> Context -> WasmControl s
-   doBranch :: Label -> Label         -> Context -> WasmControl s
+   doNode  :: CmmBlock               -> Context -> WasmControl s s
+   nestWithin  :: CmmBlock -> [CmmBlock] -> Context -> WasmControl s s
+   doBranch :: Label -> Label         -> Context -> WasmControl s s
 
    doNode x context =
        let codeForX = nestWithin x (dominatees x)
