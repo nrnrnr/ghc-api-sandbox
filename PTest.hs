@@ -203,7 +203,10 @@ data Controls = Controls
 
   , node_split :: Bool
 
+  , render_as_labels :: Bool
+
   , files :: [String]
+
   }
 
 options :: Parser Controls
@@ -222,6 +225,8 @@ options = Controls
   <*> switch ( long "dom" <> long "dominators" <> help "check dominators" )
 
   <*> switch ( long "split" <> help "show node-splitting" )
+
+  <*> switch ( long "labels" <> help "render nodes as labels" )
 
   <*> many (argument str (metavar "*.{hs,cmm}"))
 
@@ -263,6 +268,15 @@ dumpGroup context controls platform = mapM_ (decl platform . cmmCfgOptsProc Fals
                 -> GenCmmDecl d h (GenCmmGraph node)
                 -> IO ()
         printdoc = printSDocLn context (PageMode True) stdout
+        pprBlock :: Block CmmNode C C -> SDoc
+        pprBlock = if render_as_labels controls then ppr . entryLabel
+                   else blockTag
+
+        pprStmt :: Label -> Block CmmNode O O -> SDoc
+        pprStmt = if render_as_labels controls then \lbl _ -> ppr lbl
+                  else \lbl block -> fromMaybe (ppr lbl) $ blockTagOO block
+        pprCode lbl block = text "CODE:" <+> pprStmt lbl block
+
         decl platform (CmmData (Section sty label) d) = when False $ do
           putStrLn $ show label ++ "(" ++ show sty ++ "):"
           pprout context $ pdoc platform d
@@ -279,7 +293,7 @@ dumpGroup context controls platform = mapM_ (decl platform . cmmCfgOptsProc Fals
 
           when (viz_dot controls && lang_cmm controls) $ do
             putStrLn $ "/** ORIGINAL " ++ show r ++ " **/"
-            printdoc $ dotCFG blockTag (ppr entry) og_graph
+            printdoc $ dotCFG pprBlock (ppr entry) og_graph
 
           when (viz_code controls && lang_cmm controls) $ do
             putStrLn "/*********"
@@ -314,16 +328,14 @@ dumpGroup context controls platform = mapM_ (decl platform . cmmCfgOptsProc Fals
 
           when (viz_code controls && lang_unopt controls) $ do
             putStrLn "/* ============= Unoptimized wasm "
-            let pprCode block = text "CODE:" <+> (fromMaybe (text "?") $ blockTagOO block)
-                code = structuredControl platform (\_ -> id) (\_ -> pprCode) r_graph
+            let code = structuredControl platform (\_ -> id) pprCode r_graph
             pprout context $ pdoc platform code
             putStrLn "============== end unoptimized */"
             hFlush stdout
 
           when (viz_code controls && lang_wasm controls) $ do
             putStrLn "/* ^^^^^^^^^^^^^ Optimized wasm "
-            let pprCode block = text "CODE:" <+> (fromMaybe (text "?") $ blockTagOO block)
-                code = Opt.structuredControl platform (\_ -> id) (\_ -> pprCode) r_graph
+            let code = Opt.structuredControl platform (\_ -> id) pprCode r_graph
             pprout context $ pdoc platform code
             putStrLn "^^^^^^^^^^^^^^ End optimized */"
             hFlush stdout
@@ -339,8 +351,7 @@ dumpGroup context controls platform = mapM_ (decl platform . cmmCfgOptsProc Fals
           when (viz_path controls && lang_cmm controls) $ do
             putStrLn "/* $$$$$$$$$$$$$ "
             putStrLn "   PATHS:"
-            let --pprLabel = blockTag . blockLabeled graph
-                pprLabel = ppr
+            let pprLabel = ppr
                 pprPath' lbls = hcat $ intersperse (text " -> ") (map pprLabel (reverse lbls))
             pprout context $ vcat (map pprPath' $ shortPaths' r_graph)
             putStrLn "$$$$$$$$$$$$$$ */"
@@ -366,9 +377,8 @@ dumpGroup context controls platform = mapM_ (decl platform . cmmCfgOptsProc Fals
 
           when (viz_code controls && lang_peephole controls) $ do
             putStrLn "/* Peephole: @@@@@@@@@@@@@@@@@@@@ "
-            let pprCode block = text "CODE:" <+> (fromMaybe (text "?") $ blockTagOO block)
-                code = wasmPeepholeOpt $
-                       structuredControl platform (\_ -> id) (\_ -> pprCode) r_graph
+            let code = wasmPeepholeOpt $
+                       structuredControl platform (\_ -> id) pprCode r_graph
             pprout context $ pdoc platform code
             putStrLn "@@@@@@@@@@@@@@@@@@@ end peephole */"
             hFlush stdout
@@ -544,7 +554,7 @@ to = (Outputable.<>)
 blockTagX :: Block CmmNode C C -> SDoc
 blockTagX b = case blockTagOO $ blockBody b of
                 Just doc -> doc `to` parens (ppr (entryLabel b))
-                Nothing -> ppr (entryLabel b)
+                Nothing -> blockTagWithLabel b
 
 blockTag' :: SDoc -> Block CmmNode C C -> SDoc
 blockTag' suffix b =
@@ -552,6 +562,9 @@ blockTag' suffix b =
 
 blockBody :: Block CmmNode C C -> Block CmmNode O O
 blockBody (BlockCC _first middle _last) = middle
+
+blockTagWithLabel :: Block CmmNode C C -> SDoc
+blockTagWithLabel b = ppr (entryLabel b)
 
 
 collectAll :: Monad m => Stream m a b -> m ([a], b)

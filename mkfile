@@ -10,11 +10,12 @@ all:V:
 	dot-forest -o $target $prereq
 
 OPTIONS="--cmm --dot"
+LABELS=
 
 %.dot:DQ: mkfile `fish -c "echo dist-newstyle/build/**/build/ptest/ptest" 2>/dev/null || echo PTest.hs`
 	for i in programs/$stem.{hs,cmm}; do
 	  if [[ -r $i ]]; then
-            sandbox-run ptest $OPTIONS $i > $target
+            sandbox-run ptest $OPTIONS $LABELS $i > $target
 	    echo "Wrote $target from $i" >&2
             exit 0
           fi
