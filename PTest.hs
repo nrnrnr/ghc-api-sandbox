@@ -270,7 +270,7 @@ dumpGroup context controls platform = mapM_ (decl platform . cmmCfgOptsProc Fals
           let r = reducibility (graphWithDominators og_graph)
           gwd <- runUniqSM $ asReducible (graphWithDominators og_graph)
           let r_graph = gwd_graph gwd -- reducible graph
-              mkResults tx = wasmResults r_graph (tx platform const const r_graph)
+              mkResults tx = wasmResults r_graph (tx platform Exp Stmt r_graph)
               wasmOptResults = mkResults Opt.structuredControl
               wasmUnoptResults = mkResults structuredControl
               wasmPeepholeResults =
