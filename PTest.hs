@@ -309,6 +309,8 @@ dumpGroup context controls platform = mapM_ (decl platform . cmmCfgOptsProc Fals
                   pprout context $ pdoc platform r_graph
                   putStrLn "*********/"
                 Reducible -> putStrLn "/***** original graph was reducible ****/"
+          when (path_results controls) $ do
+              putStrLn "XXX START HERE IMPLEMENT A COMPARISON"
 
           when (viz_code controls && lang_unopt controls) $ do
             putStrLn "/* ============= Unoptimized wasm "

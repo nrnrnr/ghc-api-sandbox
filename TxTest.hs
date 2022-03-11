@@ -91,6 +91,9 @@ data Language a event =
 txTest :: Language a event -> Language b event -> [event] -> a -> b -> TestResult
 txTest = undefined
 
+
+
+
 data TADict s e = TADict { s_string :: s -> String
                          , e_string :: e -> String
                          , eq_s :: s -> s -> Bool
@@ -99,19 +102,19 @@ data TADict s e = TADict { s_string :: s -> String
 
 analyzeTest :: (Show s, Show e, Eq s, Eq e)
             => InterpTest s e [Event s e]
-            -> (TestResult, IO ())
+            -> TestResult
 analyzeTest t =
     if tracesMatch t then
-        (Good, putStrLn $ "EXACT: " ++ show (it_input t))
+        Good $ putStrLn $ "EXACT: " ++ show (it_input t)
     else if outputTraceContinues t then
-        (Good, putStrLn $ "CONTINUES: " ++ show (it_output t))
+        Good $ putStrLn $ "CONTINUES: " ++ show (it_output t)
     else
-        ( Bad
-        , do putStrLn $ "NO MATCH:"
+        Bad $
+          do putStrLn $ "NO MATCH:"
              putStrLn $ "  " ++ show (it_input t)
              putStrLn $ "  " ++ show (it_output t)
              putStrLn $ "Differ in position " ++ diffPos t
-        )
+
   where diffPos t = badIndex (0::Int) (it_input t) (pastEvents (it_output t))
         badIndex k [] [] = "PERFECT MATCH at " ++ show k
         badIndex k (e:es) (e':es')
@@ -120,8 +123,27 @@ analyzeTest t =
         badIndex k [] (_:_) = show k ++ " (input runs out first)"
         badIndex k (_:_) [] = show k ++ " (output runs out first)"
 
+compareRuns :: (Eq stmt, Eq exp)
+            => (a -> BitConsuming stmt exp ())
+            -> (b -> BitConsuming stmt exp ())
+            -> a
+            -> b
+            -> [Bool]
+            -> TestResult
+compareRuns compileA compileB a b bits =
+    if and $ zipWith (eventsMatch (==) (==)) aEvents bEvents then
+        Good $ return ()
+    else
+        Bad $ putStrLn "traces did not match; need to add details"
+ where aEvents = pastEvents $ runWithBits (compileA a) bits
+       bEvents = pastEvents $ runWithBits (compileB b) bits
 
 
 
-data TestResult = Good | Bad
-  deriving Eq
+
+data TestResult = Good { resultIo :: IO () }
+                | Bad  { resultIo :: IO () }
+
+isGood :: TestResult -> Bool
+isGood (Good _) = True
+isGood (Bad _) = False
