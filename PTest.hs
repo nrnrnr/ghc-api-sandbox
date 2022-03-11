@@ -358,20 +358,18 @@ dumpGroup context controls platform = mapM_ (decl platform . cmmCfgOptsProc Fals
             hFlush stdout
 
           when (path_results controls && lang_cmm controls) $ do
-            let (results, ios) = unzip $ map analyzeLabelTest $ cmmPathResults r_graph
+            let results = map analyzeLabelTest $ cmmPathResults r_graph
             putStrLn "/* <<<<<<<<<<<<<<<<< "
             putStrLn $ "Testing CMM " ++ show (length $ cmmPathResults r_graph) ++ " path results"
-            putStrLn $ "CMM:  " ++ resultReport results
-            sequence_ ios
+            reportResults "CMM:  " results
             putStrLn "   >>>>>>>>>>>>>>>>> */ "
             hFlush stdout
 
           when (path_results controls && lang_unopt controls) $ do
-            let (results, ios) = unzip $ map analyzeLabelTest $ wasmUnoptResults
+            let results = map analyzeLabelTest $ wasmUnoptResults
             putStrLn "/* ||||||||||||||||||| "
-            putStrLn $ "Testing unoptimized Wasm " ++ show (length $ wasmUnoptResults) ++ " path results"
-            putStrLn $ "Wasm: " ++ resultReport results
-            sequence_ ios
+            putStrLn $ "Testing unoptimized Wasm " ++ show (length $ results) ++ " path results"
+            reportResults "Wasm: " results
             putStrLn "   |||||||||||||||||| */ "
             hFlush stdout
 
@@ -384,20 +382,18 @@ dumpGroup context controls platform = mapM_ (decl platform . cmmCfgOptsProc Fals
             hFlush stdout
 
           when (path_results controls && lang_wasm controls) $ do
-            let (results, ios) = unzip $ map analyzeLabelTest $ wasmOptResults
+            let results = map analyzeLabelTest $ wasmOptResults
             putStrLn "/* ##################### "
             putStrLn $ "Testing optimized wasm " ++ show (length wasmOptResults) ++ " path results"
-            putStrLn $ "Optimized wasm: " ++ resultReport results
-            sequence_ ios
+            reportResults "Optimized wasm: " results
             putStrLn "   ##################### */ "
             hFlush stdout
 
           when (path_results controls && lang_peephole controls) $ do
-            let (results, ios) = unzip $ map analyzeLabelTest $ wasmPeepholeResults
+            let results = map analyzeLabelTest $ wasmPeepholeResults
             putStrLn "/* ##################### "
             putStrLn $ "Testing peephole " ++ show (length wasmPeepholeResults) ++ " path results"
-            putStrLn $ "Peep: " ++ resultReport results
-            sequence_ ios
+            reportResults "Peep: " results
             putStrLn "   ##################### */ "
             hFlush stdout
 
@@ -434,11 +430,16 @@ dumpGroup context controls platform = mapM_ (decl platform . cmmCfgOptsProc Fals
 
 
 
-        resultReport results =
-            if good == total then "All " ++ show total ++ " results are good"
-            else show good ++ " of " ++ show total ++ " results are good"
+        reportResults :: String -> [TestResult] -> IO ()
+        reportResults prefix results = do
+            putStr prefix
+            putStrLn msg
+            sequence_ $ map resultIo results
           where total = length results
-                good = length [r | r <- results, r == Good]
+                good = length [io | Good io <- results]
+                msg = if good == total then "All " ++ show total ++ " results are good"
+                      else show good ++ " of " ++ show total ++ " results are good"
+
 
 
 
@@ -591,6 +592,6 @@ hashTag platform = sep . map text . take 2 . natWords . bsNat . hashBlock platfo
 
 analyzeLabelTest :: (Show a, Show b, Eq a, Eq b)
                  => InterpTest a b [Event a b]
-                 -> (TestResult, IO ())
+                 -> TestResult
 
 analyzeLabelTest = analyzeTest
