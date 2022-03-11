@@ -61,6 +61,7 @@ data WasmControl s e where
 
 data BrTableInterval
     = BrTableInterval { bti_lo :: Integer, bti_count :: Integer }
+  deriving (Show)
 
 instance Outputable BrTableInterval where
   ppr range = brackets $ hcat[integer (bti_lo range), text "..", integer hi]

@@ -27,6 +27,12 @@ import GHC.Test.ControlMonad
 
 data Frame s = EndLoop s | EndBlock | EndIf | Run s
 
+instance Show (Frame s) where
+  show (EndLoop _) = "end loop"
+  show EndBlock    = "end block"
+  show EndIf = "end if"
+  show (Run _) = "run"
+
 evalWasm :: ControlTestMonad s e m => WasmControl s e -> m ()
 run  :: forall s e m . ControlTestMonad s e m => Stack s e -> m ()
 
