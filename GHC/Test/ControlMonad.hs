@@ -75,6 +75,13 @@ data FinalState stmt exp a
     | Halted { pastEvents :: [Event stmt exp] }
     | Failed { pastEvents :: [Event stmt exp], msg :: String }
 
+instance Functor (FinalState s e) where
+  fmap f (Produced events a) = Produced events (f a)
+  fmap _ (Halted events) = Halted events
+  fmap _ (Failed events msg) = Failed events msg
+
+
+
 instance (Show exp, Show stmt, Show a) => Show (FinalState stmt exp a) where
   show (Produced events a) = show events ++ " -> " ++ show a
   show (Halted events) = show events ++ " EXHAUSTS"
@@ -94,11 +101,12 @@ newtype BitConsuming stmt exp a =
 --event e = BC $ \bits past -> (Produced (e : past) (), bits)
 
 instance Functor (BitConsuming stmt exp) where
-  fmap f ma = f <$> ma
+  fmap f ma = BC $ \bits past -> update $ unBC ma bits past
+    where update (l, r) = (fmap f l, r)
 
 instance Applicative (BitConsuming stmt exp) where
   pure a = BC $ \bits past -> (Produced past a, bits)
-  mf <*> ma = do { f <- mf; f <$> ma; }
+  mf <*> ma = do { f <- mf; f <$> ma }
 
 instance Monad (BitConsuming stmt exp) where
   m >>= k = BC $ \bits past ->
