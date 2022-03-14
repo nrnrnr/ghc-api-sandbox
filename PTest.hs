@@ -20,6 +20,7 @@ import DotCfg
 import DotGraph
 
 import GHC.Cmm.Collapse
+import GHC.Cmm.ControlFlow.Run
 import GHC.Cmm.Reducibility
 import GHC.Data.Graph.Collapse
 
@@ -49,7 +50,7 @@ import System.FilePath as FilePath
 import StgToCmmLite (codeGen)
 
 
-import GHC
+import GHC hiding (Stmt)
 import GHC.Core.TyCon
 import GHC.CoreToStg
 import GHC.CoreToStg.Prep
@@ -205,6 +206,8 @@ data Controls = Controls
 
   , render_as_labels :: Bool
 
+  , txtest :: Bool
+
   , files :: [String]
 
   }
@@ -227,6 +230,8 @@ options = Controls
   <*> switch ( long "split" <> help "show node-splitting" )
 
   <*> switch ( long "labels" <> help "render nodes as labels" )
+
+  <*> switch ( long "txtest" <> help "test translation against bit vectors" )
 
   <*> many (argument str (metavar "*.{hs,cmm}"))
 
@@ -323,8 +328,22 @@ dumpGroup context controls platform = mapM_ (decl platform . cmmCfgOptsProc Fals
                   pprout context $ pdoc platform r_graph
                   putStrLn "*********/"
                 Reducible -> putStrLn "/***** original graph was reducible ****/"
-          when (path_results controls) $ do
-              putStrLn "XXX START HERE IMPLEMENT A COMPARISON"
+          when (txtest controls) $ do
+            when (lang_cmm controls) $
+              case r of
+                Reducible -> putStrLn "/* graph is reducible; no translation to test */"
+                Irreducible -> do
+                   let runOrig = translate og_graph
+                       runSplit = translate r_graph
+                       bitss = bitVectors r_graph
+                       translate :: CmmGraph -> BitConsuming Stmt Exp ()
+                       translate = evalGraph Stmt Exp
+                       paths :: CmmGraph -> [[Event Stmt Exp]]
+                       paths = eventPaths
+                       bitVectors :: CmmGraph -> [[Bool]]
+                       bitVectors = map traceBits . paths
+                   reportResults "Node splitting: " $
+                                 map (compareRuns runOrig runSplit) bitss
 
           when (viz_code controls && lang_unopt controls) $ do
             putStrLn "/* ============= Unoptimized wasm "

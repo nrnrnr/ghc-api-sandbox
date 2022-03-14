@@ -113,30 +113,43 @@ analyzeTest t =
           do putStrLn $ "NO MATCH:"
              putStrLn $ "  " ++ show (it_input t)
              putStrLn $ "  " ++ show (it_output t)
-             putStrLn $ "Differ in position " ++ diffPos t
+             putStrLn $ "Differ in position " ++
+                        diffPos (it_input t) (pastEvents (it_output t))
 
-  where diffPos t = badIndex (0::Int) (it_input t) (pastEvents (it_output t))
-        badIndex k [] [] = "PERFECT MATCH at " ++ show k
-        badIndex k (e:es) (e':es')
-           | eventsMatch (==) (==) e e' = badIndex (k+1) es es'
-           | otherwise = show k ++ " (" ++ show e ++ " vs " ++ show e' ++ ")"
-        badIndex k [] (_:_) = show k ++ " (input runs out first)"
-        badIndex k (_:_) [] = show k ++ " (output runs out first)"
-
-compareRuns :: (Eq stmt, Eq exp)
-            => (a -> BitConsuming stmt exp ())
-            -> (b -> BitConsuming stmt exp ())
-            -> a
-            -> b
+compareRuns :: (Eq stmt, Eq exp, Show stmt, Show exp)
+            => BitConsuming stmt exp ()
+            -> BitConsuming stmt exp ()
             -> [Bool]
             -> TestResult
-compareRuns compileA compileB a b bits =
+compareRuns a b bits =
     if and $ zipWith (eventsMatch (==) (==)) aEvents bEvents then
         Good $ return ()
+    else if aEvents `isPrefixOf` bEvents then
+        Bad $ do putStrLn $ "first sequence is prefix of second (" ++
+                            show (length aEvents) ++ " of " ++
+                            show (length bEvents) ++ "):"
+                 putStrLn $ "  " ++ show aEvents
+                 putStrLn $ "  " ++ show bEvents
+    else if bEvents `isPrefixOf` aEvents then
+        Bad $ do putStrLn $ "second sequence is prefix of first (" ++
+                            show (length aEvents) ++ " of " ++
+                            show (length bEvents) ++ "):"
+                 putStrLn $ "  " ++ show aEvents
+                 putStrLn $ "  " ++ show bEvents
     else
-        Bad $ putStrLn "traces did not match; need to add details"
- where aEvents = pastEvents $ runWithBits (compileA a) bits
-       bEvents = pastEvents $ runWithBits (compileB b) bits
+        Bad $
+          do putStrLn $ "NO MATCH:"
+             putStrLn $ "  " ++ show aEvents
+             putStrLn $ "  " ++ show bEvents
+             putStrLn $ "Differ in position " ++ diffPos aEvents bEvents
+
+ where aEvents = pastEvents $ runWithBits a bits
+       bEvents = pastEvents $ runWithBits b bits
+
+       isPrefixOf [] _         =  True
+       isPrefixOf _  []        =  False
+       isPrefixOf (x:xs) (y:ys)=  match x y && isPrefixOf xs ys
+       match = eventsMatch (==) (==)
 
 
 
@@ -147,3 +160,14 @@ data TestResult = Good { resultIo :: IO () }
 isGood :: TestResult -> Bool
 isGood (Good _) = True
 isGood (Bad _) = False
+
+
+diffPos :: (Show s, Show e, Eq s, Eq e)
+        => [Event s e] -> [Event s e] -> String
+diffPos = badIndex (0::Int)
+  where badIndex k [] [] = "PERFECT MATCH?! at " ++ show k
+        badIndex k (e:es) (e':es')
+           | eventsMatch (==) (==) e e' = badIndex (k+1) es es'
+           | otherwise = show k ++ " (" ++ show e ++ " vs " ++ show e' ++ ")"
+        badIndex k [] (_:_) = show k ++ " (input runs out first)"
+        badIndex k (_:_) [] = show k ++ " (output runs out first)"
