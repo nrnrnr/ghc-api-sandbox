@@ -15,14 +15,14 @@ module FlowTest
   )
 where
 
-import Data.Function
-
 import GHC.Utils.Outputable
 
 import GHC.Cmm
+import GHC.Cmm.Ppr ()
 import GHC.Cmm.Dataflow.Label
 import GHC.Cmm.Dataflow.Block
 import GHC.Cmm.ControlFlow.Run
+import GHC.Platform
 import GHC.Test.CmmPaths
 import GHC.Test.ControlMonad
 import GHC.Wasm.ControlFlow
@@ -38,11 +38,18 @@ data Exp = Exp { e_label :: Label
                , e_exp :: CmmExpr
                }
 
+renderS :: Stmt -> String
+renderS = showSDocUnsafe . pdoc genericPlatform . s_body
+
+renderE :: Exp -> String
+renderE = showSDocUnsafe . pdoc genericPlatform . e_exp
+
 instance Eq Stmt where
-  (==) = (==) `on` s_label
+  s == s' = s_label s == s_label s' || renderS s == renderS s'
 
 instance Eq Exp where
-  (==) = (==) `on` e_label
+  e == e' = e_label e == e_label e' || renderE e == renderE e'
+
 
 instance Show Stmt where
   show = showSDocUnsafe . ppr . s_label
