@@ -21,6 +21,7 @@ import DotGraph
 
 import GHC.Cmm.Collapse
 import GHC.Cmm.ControlFlow.Run
+import GHC.Wasm.ControlFlow.Run
 import GHC.Cmm.Reducibility
 import GHC.Data.Graph.Collapse
 
@@ -282,6 +283,14 @@ dumpGroup context controls platform = mapM_ (decl platform . cmmCfgOptsProc Fals
                   else \lbl block -> fromMaybe (ppr lbl) $ blockTagOO block
         pprCode lbl block = text "CODE:" <+> pprStmt lbl block
 
+        bitVectors :: CmmGraph -> [[Bool]]
+        bitVectors = map traceBits . paths
+          where paths :: CmmGraph -> [[Event Stmt Exp]]
+                paths = eventPaths
+
+        asTMBC :: BitConsuming Stmt Exp () -> BitConsuming Stmt Exp ()
+        asTMBC = id
+
         decl platform (CmmData (Section sty label) d) = when False $ do
           putStrLn $ show label ++ "(" ++ show sty ++ "):"
           pprout context $ pdoc platform d
@@ -289,7 +298,8 @@ dumpGroup context controls platform = mapM_ (decl platform . cmmCfgOptsProc Fals
           let r = reducibility (graphWithDominators og_graph)
           gwd <- runUniqSM $ asReducible (graphWithDominators og_graph)
           let r_graph = gwd_graph gwd -- reducible graph
-              mkResults tx = wasmResults r_graph (tx platform Exp Stmt r_graph)
+              applyTx tx = tx platform Exp Stmt
+              mkResults tx = wasmResults r_graph (applyTx tx r_graph)
               wasmOptResults = mkResults Opt.structuredControl
               wasmUnoptResults = mkResults structuredControl
               wasmPeepholeResults =
@@ -333,17 +343,15 @@ dumpGroup context controls platform = mapM_ (decl platform . cmmCfgOptsProc Fals
               case r of
                 Reducible -> putStrLn "/* graph is reducible; no translation to test */"
                 Irreducible -> do
-                   let runOrig = translate og_graph
-                       runSplit = translate r_graph
-                       bitss = bitVectors r_graph
-                       translate :: CmmGraph -> BitConsuming Stmt Exp ()
-                       translate = evalGraph Stmt Exp
-                       paths :: CmmGraph -> [[Event Stmt Exp]]
-                       paths = eventPaths
-                       bitVectors :: CmmGraph -> [[Bool]]
-                       bitVectors = map traceBits . paths
+                   let runOrig = asTMBC $ evalGraph Stmt Exp og_graph
+                       runSplit = asTMBC $ evalGraph Stmt Exp r_graph
                    reportResults "Node splitting: " $
-                                 map (compareRuns runOrig runSplit) bitss
+                                 map (compareRuns runOrig runSplit) (bitVectors r_graph)
+            when (lang_wasm controls) $
+              let runOrig = evalGraph Stmt Exp og_graph
+                  runWasm = asTMBC $ evalWasm $ applyTx Opt.structuredControl r_graph
+              in  reportResults "Optimized Wasm vs original Cmm: " $
+                                 map (compareRuns runOrig runWasm) (bitVectors r_graph)
 
           when (viz_code controls && lang_unopt controls) $ do
             putStrLn "/* ============= Unoptimized wasm "
