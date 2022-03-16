@@ -26,7 +26,8 @@ import GHC.Cmm.Reducibility
 import GHC.Data.Graph.Collapse
 
 import FlowTest
---import GHC.Test.ControlMonad
+import GHC.Test.CmmPaths
+import GHC.Test.ControlMonad
 import GHC.Types.Unique.Supply
 
 import Control.Monad
