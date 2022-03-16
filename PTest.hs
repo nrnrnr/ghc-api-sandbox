@@ -20,7 +20,7 @@ import DotGraph
 
 import GHC.Cmm.Collapse
 import GHC.Cmm.Reducibility
-import GHC.Wasm.ControlFlow.Collapse
+import GHC.Data.Graph.Collapse
 
 import FlowTest
 --import GHC.Test.ControlMonad
@@ -403,7 +403,7 @@ dumpGroup context controls platform = mapM_ (decl platform . cmmCfgOptsProc Fals
 
                 pprLabel = blockTag' empty . blockLabeled og_graph
 
-                showInfo :: (Int, Info) -> SDoc
+                showInfo :: (Int, CollapseInfo) -> SDoc
                 showInfo (_, info) = unsplit `commaCat` split
                  where commaCat :: SDoc -> SDoc -> SDoc
                        commaCat a b
