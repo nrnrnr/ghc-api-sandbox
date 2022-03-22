@@ -91,3 +91,30 @@ executable ptest
     default-language: Haskell2010
 
     ghc-options:
+
+executable rtest
+    import: program-default-options
+    main-is:        RTest.hs
+
+    -- Modules included in this executable, other than Main.
+    other-modules:  
+
+                    LoadCmmGroup
+                    StgToCmmLite
+
+    build-depends:    base >=4.14.2.0,
+                      ghc >= 9.3,
+                      ghc-boot >= 9.3,
+--                      bytestring >= 0.10,
+                      filepath >= 1.4,
+--                      array >= 0.5,
+--                      QuickCheck >= 2.14.2,
+--                      containers >= 0.6,
+--                      mtl >= 2.2,
+--                      utf8-string == 1.0.2,
+--                      cryptohash-sha1 == 0.11.*,
+--                      optparse-applicative == 0.17.*
+    hs-source-dirs:   .
+    default-language: Haskell2010
+
+    ghc-options:
