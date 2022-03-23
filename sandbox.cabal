@@ -29,7 +29,7 @@ executable ptest
     main-is:        Placeholder.hs
 
     -- Modules included in this executable, other than Main.
-    other-modules:  
+    other-modules:
 
                      -- dominators
                     GHC.Cmm.Dominators
@@ -97,20 +97,32 @@ executable rtest
     main-is:        RTest.hs
 
     -- Modules included in this executable, other than Main.
-    other-modules:  
+    other-modules:
 
+                    ActionsAndDecisions
+                    BitConsumer
+                    ControlTestMonad
                     LoadCmmGroup
+                    RunCmm
                     StgToCmmLite
+
+                    GHC.Cmm.Collapse
+                    GHC.Cmm.Dominators
+                    GHC.Cmm.Reducibility
+                    GHC.Data.Graph.Collapse
+                    GHC.Data.Graph.Inductive.Graph
+                    GHC.Data.Graph.Inductive.PatriciaTree
+
 
     build-depends:    base >=4.14.2.0,
                       ghc >= 9.3,
                       ghc-boot >= 9.3,
                       bytestring >= 0.10,
                       filepath >= 1.4,
---                      array >= 0.5,
+                      array >= 0.5,
 --                      QuickCheck >= 2.14.2,
---                      containers >= 0.6,
---                      mtl >= 2.2,
+                      containers >= 0.6,
+                      mtl >= 2.2,
 --                      utf8-string == 1.0.2,
 --                      cryptohash-sha1 == 0.11.*,
 --                      optparse-applicative == 0.17.*
