@@ -3,24 +3,15 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module GHC.Data.Graph.Collapse
-  ( PureSupernode(..)
-  , Supernode(..)
-  , collapseInductiveGraph
+  ( collapseInductiveGraph
+  , CollapseInfo(..)
   , VizCollapseMonad(..)
   , NullCollapseViz(..)
-  , runNullCollapse
-  , MonadUniqSM(..)
+  , pprCollapseInfo
   )
 where
-
-import Control.Monad
-
-import GHC.Types.Unique.Supply
-
 
 {-|
 Module      : GHC.Data.Graph.Collapse
@@ -45,17 +36,18 @@ Functional Graph Library (Hackage package `fgl`, modules
 -- https://doi.org/10.1137/0201014
 
 
-import Prelude
+import Prelude hiding ((<>))
 
 import Control.Exception
+import Data.Function hiding ((&))
 import Data.List
 
 import GHC.Data.Graph.Inductive.Graph
--- import GHC.Cmm.Dataflow.Collections
+import GHC.Cmm.Dataflow.Collections
 import GHC.Cmm.Dataflow.Label
--- import GHC.Cmm.Dominators (RPNum)
+import GHC.Cmm.Dominators (RPNum)
 import GHC.Utils.Panic
--- import GHC.Utils.Outputable
+import GHC.Utils.Outputable
 
 -- | If you want to visualize the graph-collapsing algorithm, create
 -- an instance of monad `VizCollapseMonad`.  Each step in the
@@ -63,13 +55,22 @@ import GHC.Utils.Panic
 -- care about visualization, you would use the `NullCollapseViz`
 -- monad, in which these operations are no-ops.
 
-class (Monad m) => MonadUniqSM m where
-  liftUniqSM :: UniqSM a -> m a
+class (Graph gr, Monad m) => VizCollapseMonad m gr where
+  consumeByInGraph :: Node -> Node -> gr CollapseInfo () -> m ()
+  splitGraphAt :: gr CollapseInfo () -> LNode CollapseInfo -> m ()
+  finalGraph :: gr CollapseInfo () -> m ()
 
-class (MonadUniqSM m, Graph gr, Supernode s m) => VizCollapseMonad m gr s where
-  consumeByInGraph :: Node -> Node -> gr s () -> m ()
-  splitGraphAt :: gr s () -> LNode s -> m ()
-  finalGraph :: gr s () -> m ()
+-- | Use a final `CollapseInfo` record to find out what nodes, if
+-- any, of an original graph needed to be split.  (A `CollapseInfo`
+-- record describes a "supernode" that is the result of having merged
+-- one or more "original nodes," called its /constituents/.)
+
+data CollapseInfo =
+    CollapseInfo { unsplitLabels :: LabelSet -- ^ Constituents that were never split
+         , splitLabels :: LabelSet   -- ^ Constituents that were split
+         , rpnumber :: RPNum         -- ^ Number of lowest constituent
+         }
+
 
 -- | Tell if a `Node` has a single predecessor.
 singlePred :: Graph gr => gr a b -> Node -> Bool
@@ -80,13 +81,14 @@ singlePred gr n
 -- | Use this function to extract information about a `Node` that you
 -- know is in a `Graph`.  It's like `match` from `Graph`, but it must
 -- succeed.
-forceMatch :: (Graph gr)
-           => Node -> gr s b -> (Context s b, gr s b)
+forceMatch :: Graph gr
+           => Node -> gr CollapseInfo b -> (Context CollapseInfo b, gr CollapseInfo b)
 forceMatch node g = case match node g of (Just c, g') -> (c, g')
                                          _ -> panicDump node g
- where panicDump :: Graph gr => Node -> gr s b -> any
+ where panicDump :: Graph gr => Node -> gr CollapseInfo b -> any
        panicDump k _g =
-        panic ("/* failed to match node " ++ show k ++ " */"
+        panic (showSDocUnsafe $
+               text "/* failed to match node " <+> int k <+> text "*/"
                -- $$ dotGraph pprCollapseInfo (selected k) g
                -- for a more informative panic, import DotGraph and turn this on
               )
@@ -110,16 +112,20 @@ forceMatch node g = case match node g of (Just c, g') -> (c, g')
 -- It also returns a list of nodes in the result graph that
 -- are *newly* single-predecessor nodes.
 
-consumeBy :: (DynGraph gr, PureSupernode s)
-          => Node -> Node -> gr s () -> (gr s (), [Node])
+consumeBy :: DynGraph gr
+          => Node -> Node -> gr CollapseInfo () -> (gr CollapseInfo (), [Node])
 consumeBy toNode fromNode g =
     assert (toPreds == [((), fromNode)]) $
     (newGraph, newCandidates)
   where ((toPreds,   _, to,   toSuccs),   g')  = forceMatch toNode   g
         ((fromPreds, _, from, fromSuccs), g'') = forceMatch fromNode g'
+        info = from { unsplitLabels = unsplitLabels from `setUnion` unsplitLabels to
+                    , splitLabels   = splitLabels   from `setUnion` splitLabels   to
+                    , rpnumber = rpnumber from `min` rpnumber to
+                    }
         context = ( fromPreds -- by construction, can't have `toNode`
                   , fromNode
-                  , from <> to
+                  , info
                   , delete ((), fromNode) toSuccs `union` fromSuccs
                   )
         newGraph = context & g''
@@ -129,30 +135,15 @@ consumeBy toNode fromNode g =
 -- | Split a given node.  The node is replaced with a collection of replicas,
 -- one for each predecessor.  After the split, every predecessor
 -- points to a unique replica.
-split :: forall gr s b m . (DynGraph gr, Supernode s m)
-      => Node -> gr s b -> m (gr s b)
-split node g = assert (isMultiple preds) $ foldM addReplica g' newNodes
-  where ((preds, _, this, succs), g') = forceMatch node g
-        newNodes :: [((b, Node), Node)]
+split :: DynGraph gr => Node -> gr CollapseInfo b -> gr CollapseInfo b
+split node g = assert (isMultiple preds) $ foldl addReplica g' newNodes
+  where ((preds, _, info, succs), g') = forceMatch node g
+        info' = info { unsplitLabels = setEmpty
+                     , splitLabels = splitLabels info `setUnion` unsplitLabels info
+                     }
         newNodes = zip preds [maxNode+1..]
         (_, maxNode) = nodeRange g
-        thisLabel = superLabel this
-        addReplica :: gr s b -> ((b, Node), Node) -> m (gr s b)
-        addReplica g ((b, pred), newNode) = do
-            (newSuper, relabel) <- freshen this
-            return $ add newSuper relabel
-          where add newSuper _relabel =
-                  updateNode (thisLabel `replacedWith` superLabel newSuper) pred $
-                  ([(b, pred)], newNode, newSuper, succs) & g
-
-
-replacedWith :: PureSupernode s => Label -> Label -> s -> s
-replacedWith old new = mapLabels (\l -> if l == old then new else l)
-
-updateNode :: DynGraph gr => (s -> s) -> Node -> gr s b -> gr s b
-updateNode relabel node g = (preds, n, relabel this, succs) & g'
-    where ((preds, n, this, succs), g') = forceMatch node g
-
+        addReplica g (pred, newNode) = ([pred], newNode, info', succs) & g
 
 
 -- | Does a list have more than one element? (in constant time).
@@ -161,16 +152,18 @@ isMultiple [] = False
 isMultiple [_] = False
 isMultiple (_:_:_) = True
 
--- | Find a candidate for splitting by finding a node that has multiple predecessors.
-
-anySplittable :: forall gr a b . Graph gr => gr a b -> LNode a
-anySplittable g = case splittable of
-                    n : _ -> n
-                    [] -> panic "anySplittable found no splittable nodes"
-  where splittable = filter (isMultiple . pre g . fst) $ labNodes g
-        splittable :: [LNode a]
-
-
+-- | Find a candidate for splitting by finding the first node (by
+-- reverse postorder) that has multiple predecessors.
+leastSplittable :: Graph gr => gr CollapseInfo () -> LNode CollapseInfo
+leastSplittable g = lnode $ minimumBy (compare `on` num) splittable
+  where splittable = filter (isMultiple . preds) $ map about $ labNodes g
+        splittable :: [(Adj (), Node, RPNum, CollapseInfo)]
+        preds (ps, _, _, _) = ps
+        num (_, _, rp, _) = rp
+        lnode (_, n, _, info) = (n, info)
+        about :: (Node, CollapseInfo) -> (Adj (), Node, RPNum, CollapseInfo)
+        about (n, info) = (ps, n, rpnumber info, info)
+          where (ps, _, _, _) = context g n
 
 -- | Test if a graph has but a single node.
 singletonGraph :: Graph gr => gr a b -> Bool
@@ -180,16 +173,16 @@ singletonGraph g = case labNodes g of [_] -> True
 -- | Using the algorithm of Hecht and Ullman (1972), collapse a graph
 -- into a single node, splitting nodes as needed.  Record
 -- visualization events in monad `m`.
-collapseInductiveGraph :: (DynGraph gr, Supernode s m, VizCollapseMonad m gr s)
-                       => gr s () -> m (gr s ())
+collapseInductiveGraph :: (DynGraph gr, VizCollapseMonad m gr)
+                       => gr CollapseInfo () -> m (gr CollapseInfo ())
 collapseInductiveGraph g = drain g worklist
   where worklist :: [[Node]] -- ^ nodes with exactly one predecessor
         worklist = [filter (singlePred g) $ nodes g]
 
         drain g [] = if singletonGraph g then finalGraph g >> return g
-                     else let (n, super) = anySplittable g
-                          in  do splitGraphAt g (n, super)
-                                 collapseInductiveGraph =<< split n g
+                     else let (n, info) = leastSplittable g
+                          in  do splitGraphAt g (n, info)
+                                 collapseInductiveGraph $ split n g
         drain g ([]:nss) = drain g nss
         drain g ((n:ns):nss) = let (g', ns') = consumeBy n (theUniquePred n) g
                                in  do consumeByInGraph n (theUniquePred n) g
@@ -201,33 +194,22 @@ collapseInductiveGraph g = drain g worklist
 
 ----------------------------------------------------------------
 
-{-
 -- | Use this function to prettyprint diagnostics; it visualizes a
 -- node labeled with `CollapseInfo`.
 pprCollapseInfo :: LNode CollapseInfo -> SDoc
 pprCollapseInfo (k, info) = int k <> ":" <+> "of" <+> text (show (rpnumber info))
--}
 
 ----------------------------------------------------------------
 
 -- | The identity monad as a `VizCollapseMonad`.  Use this monad when
 -- you want efficiency in graph collapse.
-newtype NullCollapseViz a = NullCollapseViz { unNCV :: UniqSM a }
-  deriving (Functor, Applicative, Monad, MonadUnique)
+newtype NullCollapseViz a = NullCollapseViz { unNCV :: a }
 
-instance MonadUniqSM NullCollapseViz where
-  liftUniqSM = NullCollapseViz
-
-instance (Graph gr, Supernode s NullCollapseViz) =>
-    VizCollapseMonad NullCollapseViz gr s where
+instance Graph gr => VizCollapseMonad NullCollapseViz gr where
   consumeByInGraph _ _ _ = return ()
   splitGraphAt _ _ = return ()
   finalGraph _ = return ()
 
-runNullCollapse :: NullCollapseViz a -> UniqSM a
-runNullCollapse = unNCV
-
-{-
 instance Functor NullCollapseViz where
   fmap f (NullCollapseViz a) = NullCollapseViz (f a)
 
@@ -238,57 +220,31 @@ instance Applicative NullCollapseViz where
 instance Monad NullCollapseViz where
   return = pure
   NullCollapseViz a >>= k = k a
--}
 
 ----------------------------------------------------------------
 
--- | A "supernode" stands for a collection of one or more nodes (basic
--- blocks) that have been coalesced by the Hecht-Ullman algorithm.
--- A collection in a supernode constitutes a /reducible/ subgraph of a
--- control-flow graph.  (When an entire control-flow graph is collapsed
--- to a single supernode, the flow graph is reducible.)
---
--- The idea of node splitting is to collapse a control-flow graph down
--- to a single supernode, then materialize the reducible equivalent
--- graph from that supernode.  The `Supernode` class defines only the
--- methods needed to collapse; rematerialization is the responsiblity
--- of the client.
---
--- During the Hecht-Ullman algorithm, every supernode has a unique
--- entry point, which is given by `superLabel`.  But this invariant is
--- not guaranteed by the class methods and is not a law of the class.
--- The `mapLabels` function rewrites all labels that appear in a
--- supernode (both definitions and uses).  The `freshen` function
--- replaces /defined/ labels with fresh labels.
---
--- Laws:
--- @
---    superLabel (n <> n') == superLabel n
---    blocks (n <> n') == blocks n `union` blocks n'
---    mapLabels f (n <> n') = mapLabels f n <> mapLabels f n'
---    mapLabels id == id
---    mapLabels (f . g) == mapLabels f . mapLabels g
---    fst <$> freshen n == pure mapLabels <*> (snd <$> freshen n) <*> pure n
--- @
--- That last law says that when a node is freshened, the fresh node
--- that is returned is related to the argument node by the map that is returned.
---
--- (We also expect `freshen` to distribute over `<>`, but because of
--- the fresh names involved, formulating a precise law is a bit
--- challenging.)
+data Supernode
+    = Single { label :: Label
+             , block :: Block CmmNode C C
+             , successors :: [Label]
+             }
+    | Consumed { consumer :: Supernode
+               , consumed :: Supernode
+               , edge_indices :: [Int] -- 0-based indices of edges from consumer to consumed
+               , successors :: [Label]
+               }
+    | SelfEdge { node :: Supernode
+               , edge_index :: Int
+               }
 
-class (Semigroup node) => PureSupernode node where
-  superLabel :: node -> Label
-  mapLabels :: (Label -> Label) -> (node -> node)
+reverse :: Supernode -> [Block CmmNode C C]
+reverse (Single lbl b succs) = [splice closed succs `withLabel` lbl]
+reverse _ = panic "not yet"
 
-class (MonadUnique m, PureSupernode node) => Supernode node m where
-  freshen :: node -> m (node, Label -> Label) -- XXX maybe function
-                                              -- component isn't needed?
+withLabel :: Block CmmNode C C -> Label -> Block CmmNode C C
+withLabel block lbl = blockJoinHead entry tail
+    where (CmmEntry _ scope, tail) = blockSplitHead block
+          entry' = CmmEntry lbl scope
 
-  -- ghost method
-  -- blocks :: node -> Set Block
-
-_freshenLaw :: (Eq node, Supernode node m) => node -> m Bool
-_freshenLaw n =
-    liftM2 (==) (fst <$> freshen n)
-                (pure mapLabels <*> (snd <$> freshen n) <*> pure n)
+splice :: Block CmmNode e C -> [Label] -> Block CmmNode e C
+splice = panic "splice not implemented"

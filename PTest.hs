@@ -17,13 +17,13 @@ import Data.Maybe
 import Data.List hiding (foldl)
 
 import DotCfg
-import DotGraph
+--import DotGraph
 
-import GHC.Cmm.Collapse
+--import GHC.Cmm.Collapse
 import GHC.Cmm.ControlFlow.Run
 import GHC.Wasm.ControlFlow.Run
 import GHC.Cmm.Reducibility
-import GHC.Data.Graph.Collapse
+--import GHC.Data.Graph.Collapse
 
 import FlowTest
 import GHC.Test.CmmPaths
@@ -42,7 +42,7 @@ import GHC.Wasm.ControlFlow
 
 import GHC.Cmm.Dominators
 
---import Debug.Trace
+import Debug.Trace
 
 import Options.Applicative hiding (empty)
 
@@ -379,9 +379,10 @@ dumpGroup context controls platform = mapM_ (decl platform . cmmCfgOptsProc Fals
           when (viz_path controls && lang_cmm controls) $ do
             putStrLn "/* $$$$$$$$$$$$$ "
             putStrLn "   PATHS:"
+            putStrLn $ "   ENTRY POINT: " ++ showSDocUnsafe (ppr $ g_entry r_graph)
             let pprLabel = ppr
                 pprPath' lbls = hcat $ intersperse (text " -> ") (map pprLabel (reverse lbls))
-            pprout context $ vcat (map pprPath' $ shortPaths' r_graph)
+            pprout context $ vcat (map pprPath' $ trace "short paths" $ shortPaths' r_graph)
             putStrLn "$$$$$$$$$$$$$$ */"
             hFlush stdout
 
@@ -425,6 +426,7 @@ dumpGroup context controls platform = mapM_ (decl platform . cmmCfgOptsProc Fals
             putStrLn "   ##################### */ "
             hFlush stdout
 
+{-
           when (node_split controls) $ do
             let dump selected graph =
                     printSDocLn context (PageMode True) stdout $
@@ -438,7 +440,8 @@ dumpGroup context controls platform = mapM_ (decl platform . cmmCfgOptsProc Fals
                 props k ps = [(k, ps)]
                 splitProps = [("peripheries", int 3), ("color", text "blue")]
 
-                pprLabel = blockTag' empty . blockLabeled og_graph
+                _pprLabel = blockTag' empty . blockLabeled og_graph
+                pprLabel = ppr
 
                 showInfo :: (Int, CollapseInfo) -> SDoc
                 showInfo (_, info) = unsplit `commaCat` split
@@ -455,7 +458,7 @@ dumpGroup context controls platform = mapM_ (decl platform . cmmCfgOptsProc Fals
                        pprLabels = pprWithCommas pprLabel
 
             mapM_ showEvent $ collapseCmm og_graph
-
+-}
 
 
         reportResults :: String -> [TestResult] -> IO ()

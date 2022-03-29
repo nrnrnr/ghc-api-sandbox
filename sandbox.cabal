@@ -40,7 +40,6 @@ executable ptest
 
                      -- node splitting
                     GHC.Data.Graph.Collapse
-                    GHC.Cmm.Collapse
                     GHC.Cmm.Reducibility
 
                      -- translation
