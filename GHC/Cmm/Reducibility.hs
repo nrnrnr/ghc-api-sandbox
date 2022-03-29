@@ -2,8 +2,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 
-{-# OPTIONS_GHC -Wno-unused-binds -Wno-unused-matches #-}
-
 
 module GHC.Cmm.Reducibility
   ( Reducibility(..)
@@ -40,7 +38,7 @@ import Data.List hiding (splitAt)
 import Data.Maybe
 import qualified Data.Sequence as Seq
 import Control.Monad.State
-import Control.Exception
+--import Control.Exception
 
 
 import GHC.Cmm
@@ -50,17 +48,15 @@ import GHC.Cmm.Dataflow.Collections
 import GHC.Cmm.Dataflow.Block
 import GHC.Cmm.Dominators
 import GHC.Cmm.Dataflow.Graph hiding (addBlock)
-import qualified GHC.Cmm.Dataflow.Graph as G
 import GHC.Cmm.Dataflow.Label
-import GHC.Cmm.Switch
 import GHC.Data.Graph.Collapse
 import GHC.Data.Graph.Inductive.Graph
 import GHC.Data.Graph.Inductive.PatriciaTree
 import GHC.Types.Unique.Supply
-import GHC.Utils.Outputable hiding ((<>))
+--import GHC.Utils.Outputable hiding ((<>))
 import GHC.Utils.Panic
 
-import Debug.Trace
+--import Debug.Trace
 
 
 -- | Represents the result of a reducibility analysis.
@@ -100,15 +96,13 @@ asReducible gwd = case reducibility gwd of
                     Irreducible -> assertReducible <$> nodeSplit gwd
 
 assertReducible :: GraphWithDominators CmmNode -> GraphWithDominators CmmNode
-assertReducible gwd = assert (reducibility gwd == Reducible) gwd
+assertReducible gwd = if (reducibility gwd == Reducible) then gwd else panic "result not reducible"
 
 ----------------------------------------------------------------
 
 -- | Split one or more nodes of the given graph, which must be
 -- irreducible.
 
-tracePpr :: Outputable a => a -> b -> b
-tracePpr = trace . showSDocUnsafe . ppr
 
 nodeSplit :: GraphWithDominators CmmNode
           -> UniqSM (GraphWithDominators CmmNode)
@@ -132,12 +126,25 @@ nodeSplit gwd =
                                "SPLIT:" <+> ppr (entryLabel block)
                            else
                                ppr (entryLabel block)
+
+tracePpr :: Outputable a => a -> b -> b
+tracePpr = trace . showSDocUnsafe . ppr
+
+
 -}
 
-inflate :: Label -> CGraph -> CmmGraph
-inflate = undefined
-
 type CGraph = Gr CmmSuper ()
+
+inflate :: Label -> CGraph -> CmmGraph
+inflate entry cg = CmmGraph entry graph
+  where graph = GMany NothingO body NothingO
+        body :: LabelMap CmmBlock
+        body = foldl (\map block -> mapInsert (entryLabel block) block map) mapEmpty $
+               blocks super
+        super = case labNodes cg of
+                  [(_, s)] -> s
+                  _ -> panic "graph given to `inflate` is not singleton"
+
 
 -- | Convert a `CmmGraph` into an inductive graph.
 -- (The function coalesces duplicate edges into a single edge.)
@@ -145,7 +152,7 @@ cgraphOfCmm :: CmmGraph -> CGraph
 cgraphOfCmm g = foldl' addSuccEdges (mkGraph cnodes []) blocks
    where blocks = zip [0..] $ revPostorderFrom (graphMap g) (g_entry g)
          cnodes = [(k, super block) | (k, block) <- blocks]
-          where super block = Single (entryLabel block) (Seq.singleton block)
+          where super block = Nodes (entryLabel block) (Seq.singleton block)
          labelNumber = \lbl -> fromJust $ mapLookup lbl numbers
              where numbers :: LabelMap Int
                    numbers = mapFromList $ map swap blocks
@@ -184,7 +191,7 @@ nodeSplit' gwd =
 -- successors, not to predecessors.  But the node-splitting algorithm
 -- needs both.
 
-
+{-
 type Predmap  = LabelMap LabelSet -- each block to set of predecessor blocks
 type Blockmap = LabelMap CmmBlock -- each label to the block it labels
 type GState = (Predmap, Blockmap) -- consistent picture of a graph
@@ -336,6 +343,8 @@ relabel :: Label -> CmmBlock -> CmmBlock
 relabel lbl b = blockJoinHead (CmmEntry lbl scope) tail
   where (CmmEntry _ scope, tail) = blockSplitHead b
 
+-}
+
 {-
 
 Note [Reducibility resources]
@@ -394,15 +403,12 @@ size while limiting the number of passes to logarithmic.
 type Seq = Seq.Seq
 
 data CmmSuper
-    = Single { label :: Label
-             , blocks :: Seq (Block CmmNode C C)
-             }
-    | Consumed { label :: Label -- of the merged supernode
-               , blocks :: Seq (Block CmmNode C C)
-               }
+    = Nodes { label :: Label
+            , blocks :: Seq CmmBlock
+            }
 
 instance Semigroup CmmSuper where
-  s <> s' = Consumed (label s) (blocks s <> blocks s')
+  s <> s' = Nodes (label s) (blocks s <> blocks s')
 
 instance PureSupernode CmmSuper where
   superLabel = label
@@ -412,51 +418,29 @@ instance Supernode CmmSuper NullCollapseViz where
   freshen s = liftUniqSM $ relabel' s
 
 changeLabels :: (Label -> Label) -> (CmmSuper -> CmmSuper)
-changeLabels _f _ = panic "change labels"
+changeLabels f (Nodes l blocks) = Nodes (f l) (fmap (changeBlockLabels f) blocks)
 
 definedLabels :: CmmSuper -> Seq Label
 definedLabels = fmap entryLabel . blocks
 
+changeBlockLabels :: (Label -> Label) -> CmmBlock -> CmmBlock
+changeBlockLabels f block = blockJoin entry' middle exit'
+  where (entry, middle, exit) = blockSplit block
+        entry' = let CmmEntry l scope = entry
+                 in  CmmEntry (f l) scope
+        exit' = case exit of
+                  -- unclear why mapSuccessors doesn't touch these
+                  CmmCall { cml_cont = Just l } -> exit { cml_cont = Just (f l) }
+                  CmmForeignCall { succ = l } -> exit { succ = f l }
+                  _ -> mapSuccessors f exit
 
-relabel' :: CmmSuper -> UniqSM (CmmSuper, Label -> Label)
-relabel' = relabel''
-{-
+
+relabel' :: CmmSuper -> UniqSM CmmSuper
 relabel' node = do
-     mapping <- sequence pairs
-     return $ (changeLabels (labelChanger mapping) node, labelChanger mapping)
-  where oldLabels = definedLabels node
-        pairs = [do { new <- newBlockId; return (old, new) } | old <- toList oldLabels]
-        labelChanger :: [(Label, Label)] -> (Label -> Label)
-        labelChanger mapping =
-            let map = mapFromList mapping :: LabelMap Label
-            in  \lbl -> mapFindWithDefault lbl lbl map
--}
-
-relabel'' :: CmmSuper -> UniqSM (CmmSuper, Label -> Label)
-relabel'' node = do
      finite_map <- foldM addPair mapEmpty $ definedLabels node
-     return $ (changeLabels (labelChanger finite_map) node, labelChanger finite_map)
+     return $ changeLabels (labelChanger finite_map) node
   where addPair :: LabelMap Label -> Label -> UniqSM (LabelMap Label)
         addPair map old = do new <- newBlockId
                              return $ mapInsert old new map
         labelChanger :: LabelMap Label -> (Label -> Label)
         labelChanger mapping = \lbl -> mapFindWithDefault lbl lbl mapping
-
-{-
-reverse :: CmmSuper -> [Block CmmNode C C]
-reverse (Single lbl block succs) = [splice block succs `withLabel` lbl]
-reverse (Consumed lbl consumer consumed edge_indices successors) =
-  panic "not yet"
-reverse (SelfEdge {}) = panic "not yet"
-
-withLabel :: Block CmmNode C C -> Label -> Block CmmNode C C
-withLabel block lbl = blockJoinHead entry' tail
-    where (CmmEntry _ scope, tail) = blockSplitHead block
-          entry' = CmmEntry lbl scope
-
-splice :: Block CmmNode e C -> [Label] -> Block CmmNode e C
-splice block labels = spliceIndexed block $ zip [0..] labels
-
-spliceIndexed :: Block CmmNode e C -> [(Int, Label)] -> Block CmmNode e C
-spliceIndexed block ilabels = panic "splice not implemented"
--}
