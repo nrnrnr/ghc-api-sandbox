@@ -139,9 +139,9 @@ split node g = assert (isMultiple preds) $ foldM addReplica g' newNodes
         thisLabel = superLabel this
         addReplica :: gr s b -> ((b, Node), Node) -> m (gr s b)
         addReplica g ((b, pred), newNode) = do
-            (newSuper, relabel) <- freshen this
-            return $ add newSuper relabel
-          where add newSuper _relabel =
+            newSuper <- freshen this
+            return $ add newSuper
+          where add newSuper =
                   updateNode (thisLabel `replacedWith` superLabel newSuper) pred $
                   ([(b, pred)], newNode, newSuper, succs) & g
 
@@ -259,7 +259,8 @@ instance Monad NullCollapseViz where
 -- not guaranteed by the class methods and is not a law of the class.
 -- The `mapLabels` function rewrites all labels that appear in a
 -- supernode (both definitions and uses).  The `freshen` function
--- replaces /defined/ labels with fresh labels.
+-- replaces every appearance of a /defined/ label with a fresh label.
+-- (Appearances include both definitions and uses.)
 --
 -- Laws:
 -- @
@@ -268,12 +269,9 @@ instance Monad NullCollapseViz where
 --    mapLabels f (n <> n') = mapLabels f n <> mapLabels f n'
 --    mapLabels id == id
 --    mapLabels (f . g) == mapLabels f . mapLabels g
---    fst <$> freshen n == pure mapLabels <*> (snd <$> freshen n) <*> pure n
 -- @
--- That last law says that when a node is freshened, the fresh node
--- that is returned is related to the argument node by the map that is returned.
 --
--- (We also expect `freshen` to distribute over `<>`, but because of
+-- (We expect `freshen` to distribute over `<>`, but because of
 -- the fresh names involved, formulating a precise law is a bit
 -- challenging.)
 
@@ -282,13 +280,7 @@ class (Semigroup node) => PureSupernode node where
   mapLabels :: (Label -> Label) -> (node -> node)
 
 class (MonadUnique m, PureSupernode node) => Supernode node m where
-  freshen :: node -> m (node, Label -> Label) -- XXX maybe function
-                                              -- component isn't needed?
+  freshen :: node -> m node
 
   -- ghost method
   -- blocks :: node -> Set Block
-
-_freshenLaw :: (Eq node, Supernode node m) => node -> m Bool
-_freshenLaw n =
-    liftM2 (==) (fst <$> freshen n)
-                (pure mapLabels <*> (snd <$> freshen n) <*> pure n)
