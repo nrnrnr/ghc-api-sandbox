@@ -625,7 +625,8 @@ hashBlock platform b = hash $ fromString s
         s = showSDocUnsafe $ pdoc platform code
 
 hashTag :: Platform -> Block CmmNode C C -> SDoc
-hashTag platform = sep . map text . take 2 . natWords . bsNat . hashBlock platform
+hashTag platform block = hcat [ppr (entryLabel block), text ": ", hash block]
+  where hash = sep . map text . take 2 . natWords . bsNat . hashBlock platform
 
 analyzeLabelTest :: (Show a, Show b, Eq a, Eq b)
                  => InterpTest a b [Event a b]
