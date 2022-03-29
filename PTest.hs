@@ -348,11 +348,12 @@ dumpGroup context controls platform = mapM_ (decl platform . cmmCfgOptsProc Fals
                 Irreducible -> do
                    let runOrig = asTMBC $ evalGraph Stmt Exp og_graph
                        runSplit = asTMBC $ evalGraph Stmt Exp r_graph
-                   reportResults "Node splitting: " $
+                   reportResults "TX test after node splitting: " $
                                  map (compareRuns runOrig runSplit) (bitVectors r_graph)
             when (lang_wasm controls) $
               let runOrig = evalGraph Stmt Exp og_graph
-                  runWasm = asTMBC $ evalWasm $ applyTx Opt.structuredControl r_graph
+                  txwasm = applyTx Opt.structuredControl r_graph
+                  runWasm = asTMBC $ evalWasm txwasm
               in  reportResults "Optimized Wasm vs original Cmm: " $
                                  map (compareRuns runOrig runWasm) (bitVectors r_graph)
 
@@ -365,7 +366,7 @@ dumpGroup context controls platform = mapM_ (decl platform . cmmCfgOptsProc Fals
 
           when (viz_code controls && lang_wasm controls) $ do
             putStrLn "/* ^^^^^^^^^^^^^ Optimized wasm "
-            let code = Opt.structuredControl platform (\_ -> id) pprCode r_graph
+            let code = applyTx Opt.structuredControl r_graph -- Opt.structuredControl platform (\_ -> id) pprCode r_graph
             pprout context $ pdoc platform code
             putStrLn "^^^^^^^^^^^^^^ End optimized */"
             hFlush stdout
