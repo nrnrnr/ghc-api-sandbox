@@ -379,6 +379,9 @@ dumpGroup context controls platform = mapM_ (decl platform . cmmCfgOptsProc Fals
             mapM_ (putStrLn . showSDocUnsafe . ppr) (dominatorsFailures r_graph)
             putStrLn " $-$-$-$-$-$-$ */"
 
+          when (dominator_check controls && viz_dot controls) $ do
+            printdoc $ dotDominatorTree "dominator tree" r_gwd
+
           when (viz_path controls && lang_cmm controls) $ do
             putStrLn "/* $$$$$$$$$$$$$ "
             putStrLn "   PATHS:"
