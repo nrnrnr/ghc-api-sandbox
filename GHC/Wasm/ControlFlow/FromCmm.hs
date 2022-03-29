@@ -8,7 +8,10 @@ where
 
 import Prelude hiding (succ)
 
+import Data.Function
+import Data.List
 import Data.Maybe
+import qualified Data.Tree as Tree
 
 import GHC.Cmm
 import GHC.Cmm.Dataflow.Block
@@ -23,9 +26,24 @@ import GHC.Platform
 import GHC.Utils.Panic
 import GHC.Utils.Outputable (Outputable, text, (<+>), ppr
                             , pprWithCommas
+                            , showSDocUnsafe
                             )
 
 import GHC.Wasm.ControlFlow
+
+-- import Debug.Trace
+
+trace :: String -> a -> a
+trace _ a = a
+
+showO :: Outputable a => a -> String
+showO = showSDocUnsafe . ppr
+
+maximumSwitchSize :: Int
+maximumSwitchSize = 500
+  -- ^ Size of the largest switch table for which we will attempt a
+  -- `br_table` instruction.
+
 
 -- | Abstracts the kind of control flow we understand how to convert.
 -- A block can be left unconditionally, conditionally on a predicate
@@ -89,25 +107,30 @@ structuredControl :: forall e s .
                   -> WasmControl s e
 structuredControl platform txExpr txBlock g =
    if paranoidFlow && hasBlock isSwitchWithoutDefault g then -- see Note [Paranoid flow]
-       WasmBlock
-       (doNode (blockLabeled (g_entry g)) (BlockFollowedByTrap `inside` emptyContext)) <>
+       WasmBlock (doNode dominatorTree (BlockFollowedByTrap `inside` emptyContext)) <>
        WasmUnreachable
    else
-       doNode (blockLabeled (g_entry g)) emptyContext
+       doNode dominatorTree emptyContext
  where
-   doNode     :: CmmBlock               -> Context -> WasmControl s e
-   nestWithin :: CmmBlock -> [CmmBlock] -> Maybe Label -> Context -> WasmControl s e
+   dominatorTree :: Tree.Tree CmmBlock
+   dominatorTree = fmap blockLabeled $ sortTree $ gwdDominatorTree gwd
+   doNode     :: Tree.Tree CmmBlock     -> Context -> WasmControl s e
+   nestWithin :: CmmBlock -> [Tree.Tree CmmBlock] -> Maybe Label -> Context -> WasmControl s e
    doBranch   :: Label -> Label         -> Context -> WasmControl s e
 
-   doNode x context =
-       let codeForX = nestWithin x (dominatees x) Nothing
+   treeEntryLabel = entryLabel . Tree.rootLabel
+
+   doNode (Tree.Node x immediateDominatees) context =
+       trace ("doNode " ++ showO (entryLabel x) ++ " " ++
+                        showO (map treeEntryLabel $ immediateDominatees)) $
+       let codeForX = nestWithin x dominatees Nothing
        in  if isHeader x then
              WasmLoop (codeForX context')
            else
              codeForX context
      where dominatees = case lastNode x of
                           CmmSwitch {} -> immediateDominatees
-                          _ -> filter isMergeNode . immediateDominatees
+                          _ -> filter isMergeTree $ immediateDominatees
            context' = LoopHeadedBy (entryLabel x) `inside`
                         (context `withFallthrough` (entryLabel x))
      -- N.B. Dominatees must be ordered with largest RP number first.
@@ -118,12 +141,13 @@ structuredControl platform txExpr txBlock g =
      where context' = BlockFollowedBy zlabel `inside` context
    nestWithin x (y_n:ys) Nothing context =
        nestWithin x ys (Just ylabel) (context `withFallthrough` ylabel) <> doNode y_n context
-     where ylabel = entryLabel y_n
+     where ylabel = treeEntryLabel y_n
    nestWithin x [] (Just zlabel) context
      | not (generatesIf x) =
          WasmBlock (nestWithin x [] Nothing context')
      where context' = BlockFollowedBy zlabel `inside` context
    nestWithin x [] maybeMarks context =
+       trace ("translating " ++ showO (entryLabel x)) $
        translationOfX context
 
      -- (In Peterson, translationOfX combines case 1 step 6, case 2 step 1, case 2 step 3)
@@ -139,9 +163,9 @@ structuredControl platform txExpr txBlock g =
                TerminalFlow -> WasmReturn
                   -- Peterson: case 1 step 6, case 2 steps 2 and 3
                Switch e range targets default' ->
-                   WasmBrTable (txExpr xlabel e)
+                   WasmBrTable (trace "expr in switch" $ txExpr xlabel e)
                                range
-                               (map switchIndex targets)
+                               (trace "map in switch" $ map switchIndex targets)
                                (switchIndex default')
             where switchIndex :: Maybe Label -> Int
                   switchIndex Nothing = nothingIndex
@@ -160,19 +184,27 @@ structuredControl platform txExpr txBlock g =
       | isBackward from to = WasmBr i -- continue
            -- Peterson: case 1 step 4
       | isMergeLabel to = WasmBr i -- exit
-      | otherwise = doNode (blockLabeled to) context
+      | otherwise = doNode (subtreeAt to) context
      where i = index to (enclosing context)
 
    ---- everything else here is utility functions
 
+   sortTree :: Tree.Tree Label -> Tree.Tree Label
+     -- Sort highest rpnum first
+   sortTree (Tree.Node label children) =
+      Tree.Node label $ sortBy (flip compare `on` (rpnum . Tree.rootLabel)) $
+                        map sortTree children
+
+
+   subtreeAt :: Label -> Tree.Tree CmmBlock
    blockLabeled :: Label -> CmmBlock
    rpnum :: Label -> RPNum -- ^ reverse postorder number of the labeled block
    forwardPreds :: Label -> [Label] -- ^ reachable predecessors of reachable blocks,
                                     -- via forward edges only
+   isMergeTree :: Tree.Tree CmmBlock -> Bool
    isMergeLabel :: Label -> Bool
    isMergeNode :: CmmBlock -> Bool
    isHeader :: CmmBlock -> Bool -- ^ identify loop headers
-   immediateDominatees :: CmmBlock -> [CmmBlock]
      -- ^ all nodes whose immediate dominator is the given block.
      -- They are produced with the largest RP number first,
      -- so the largest RP number is pushed on the context first.
@@ -200,6 +232,14 @@ structuredControl platform txExpr txBlock g =
 
    isMergeLabel l = setMember l mergeBlockLabels
    isMergeNode = isMergeLabel . entryLabel
+   isMergeTree = isMergeNode . Tree.rootLabel
+
+   subtreeAt label =
+       mapFindWithDefault (panic "missing subtree") label subtrees
+   subtrees :: LabelMap (Tree.Tree CmmBlock)
+   subtrees = addSubtree mapEmpty dominatorTree
+     where addSubtree map (t@(Tree.Node root children)) =
+               foldl addSubtree (mapInsert (entryLabel root) t map) children
 
    mergeBlockLabels :: LabelSet
    -- N.B. A block is a merge node if it is where control flow merges.
@@ -220,8 +260,6 @@ structuredControl platform txExpr txBlock g =
                 setFromList [label | label <- successors block,
                                               dominates label (entryLabel block)]
 
-   immediateDominatees x = idominatees (entryLabel x)
-
    index _ [] = panic "destination label not in context"
    index label (frame : context)
        | label `matchesFrame` frame = 0
@@ -234,44 +272,13 @@ structuredControl platform txExpr txBlock g =
    trapIndex (_ : context) = 1 + trapIndex context
 
 
-   idominatees :: Label -> [CmmBlock]
-     -- Immediate dominatees, sorted with highest rpnum first
    gwd = graphWithDominators g
    rpnum = gwdRPNumber gwd
-   (idominatees, dominates) = (idominatees, dominates)
-       where addToDominatees ds label rpnum =
-               case fromJust $ idom label of
-                 EntryNode -> ds
-                 ImmediateDominator { ds_label = dominator } ->
-                     addToList (addDominatee label rpnum) dominator ds
-
-             dominatees :: LabelMap Dominatees
-             dominatees = mapFoldlWithKey addToDominatees mapEmpty (gwd_rpnumbering gwd)
-
-             idom :: Label -> Maybe DominatorSet -- immediate dominator
-             idom lbl = mapLookup lbl (gwd_dominators gwd)
-
-             idominatees lbl =
-                 map (blockLabeled . fst) $ mapFindWithDefault [] lbl dominatees
-
-             addDominatee :: Label -> RPNum -> Dominatees -> Dominatees
-             addDominatee l rpnum [] = [(l, rpnum)]
-             addDominatee l rpnum ((l', rpnum') : pairs)
-                 | rpnum == rpnum' = pairs -- no duplicates
-                 | rpnum > rpnum' = (l, rpnum) : (l', rpnum') : pairs
-                 | otherwise = (l', rpnum') : addDominatee l rpnum pairs
-
-             dominates lbl blockname =
-                 lbl == blockname ||
-                 case idom blockname of Nothing -> False
-                                        Just doms -> dominatorsMember lbl doms
+   dominates lbl blockname =
+       lbl == blockname || dominatorsMember lbl (gwdDominatorsOf gwd blockname)
 
    isBackward from to = rpnum to <= rpnum from -- self-edge counts as a backward edge
 
-
-type Dominatees = [(Label, RPNum)]
-  -- ^ List of blocks that are immediately dominated by a block.
-  -- (In a just world this definition could go into a `where` clause.)
 
 flowLeaving :: Platform -> CmmBlock -> ControlFlow CmmExpr
 flowLeaving platform b =
@@ -279,16 +286,28 @@ flowLeaving platform b =
       CmmBranch l -> Unconditional l
       CmmCondBranch c t f _ -> Conditional c t f
       CmmSwitch e targets ->
+          trace "flow leaving CmmSwitch" $
           let (offset, target_labels) = switchTargetsToTable targets
               (lo, hi) = switchTargetsRange targets
               default_label = switchTargetsDefault targets
               scrutinee = smartPlus platform e offset
               range = inclusiveInterval (lo+toInteger offset) (hi+toInteger offset)
-          in  Switch scrutinee range target_labels default_label
+          in  Switch scrutinee range (atMost maximumSwitchSize target_labels) default_label
 
       CmmCall { cml_cont = Just l } -> Unconditional l
       CmmCall { cml_cont = Nothing } -> TerminalFlow
       CmmForeignCall { succ = l } -> Unconditional l
+
+  where atMost :: Int -> [a] -> [a]
+        atMost k xs = if xs `hasAtLeast` k then
+                          panic "switch table is too big for WebAssembly"
+                      else
+                          xs
+
+        hasAtLeast :: [a] -> Int -> Bool
+        hasAtLeast _ 0 = True
+        hasAtLeast [] _ = False
+        hasAtLeast (_:xs) k = hasAtLeast xs (k - 1)
 
 nodeBody :: Block n C C -> Block n O O
 nodeBody (BlockCC _first middle _last) = middle
