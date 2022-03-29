@@ -1,9 +1,11 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module DotCfg
   ( dotCFG
+  , dotDominatorTree
 --  , reducibility
 --  , Reducibility(..)
   )
@@ -12,6 +14,7 @@ where
 import Prelude hiding ((<>))
 
 import Data.Maybe
+import Data.Tree
 
 import GHC.Cmm.Dominators
 
@@ -156,3 +159,20 @@ ndigits = 3
 --targets (CmmSwitch _ ts) = panic "switch targets not implemented"
 --targets (CmmCall { cml_cont = k }) = toList k
 --targets (CmmForeignCall { succ = l }) = [l]
+
+
+dotDominatorTree :: String -> GraphWithDominators node -> SDoc
+dotDominatorTree title gwd =
+     text "digraph {" $$
+     nest 2 ("entry [shape=\"plaintext\", label=" <>
+                 doubleQuotes (text title) <> "];" $$
+             "entry ->" <+> dotName (rootLabel tree) <+>  "[style=invis];" $$
+             rendering tree) $$
+     text "}"
+  where tree = gwdDominatorTree gwd
+        rendering treenode =
+            node (rootLabel treenode) $$
+            vcat (map rendering (subForest treenode)) $$
+            vcat (map (edge (rootLabel treenode) . rootLabel) (subForest treenode))
+        node label = dotName label <+> "[label=" <> doubleQuotes (ppr label) <> "]"
+        edge parent child = dotName parent <+> "->" <+> dotName child <+> "[dir=back];"
