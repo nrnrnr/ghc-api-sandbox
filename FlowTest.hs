@@ -50,6 +50,11 @@ instance Eq Stmt where
 instance Eq Exp where
   e == e' = e_label e == e_label e' || renderE e == renderE e'
 
+instance OutputableP Platform Stmt where
+  pdoc _ s = text "Stmt" <+> ppr (s_label s)
+
+instance OutputableP Platform Exp where
+  pdoc _ e = text "Exp" <+> ppr (e_label e)
 
 instance Show Stmt where
   show = showSDocUnsafe . ppr . s_label
