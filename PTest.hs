@@ -41,6 +41,7 @@ import GHC.Driver.Config.StgToCmm (initStgToCmmConfig)
 import GHC.Wasm.ControlFlow
 
 import GHC.Cmm.Dominators
+import GHC.Cmm.Switch.Implement
 
 import Debug.Trace
 
@@ -295,10 +296,11 @@ dumpGroup context controls platform = mapM_ (decl platform . cmmCfgOptsProc Fals
         decl platform (CmmData (Section sty label) d) = when False $ do
           putStrLn $ show label ++ "(" ++ show sty ++ "):"
           pprout context $ pdoc platform d
-        decl platform (CmmProc h entry registers og_graph) = do
+        decl platform (CmmProc h entry registers big_switch_graph) = do
+          og_graph <- runUniqSM $ cmmImplementSwitchPlans platform big_switch_graph
+          r_gwd <- runUniqSM $ asReducible (graphWithDominators og_graph)
           let r = reducibility (graphWithDominators og_graph)
-          gwd <- runUniqSM $ asReducible (graphWithDominators og_graph)
-          let r_graph = gwd_graph gwd -- reducible graph
+              r_graph = gwd_graph r_gwd -- reducible graph
               applyTx tx = tx platform Exp Stmt
               mkResults tx = wasmResults r_graph (applyTx tx r_graph)
               wasmOptResults = mkResults Opt.structuredControl
