@@ -2,7 +2,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
 
-module ActionsAndDecisions
+module ActionsAndObservations
   ( Stmt, Expr
   , stmt, expr
   )
