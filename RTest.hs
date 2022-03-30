@@ -22,9 +22,11 @@ import GHC.Types.Unique.Supply
 
 import qualified GHC.LanguageExtensions as LangExt
 
-import ActionsAndDecisions
+import ActionsAndObservations
 import BitConsumer
+import CmmPaths
 import ControlTestMonad
+import EntropyTransducer
 import LoadCmmGroup
 import RunCmm
 
@@ -135,7 +137,7 @@ compareRuns a b bits =
 
 
 cfgEntropy :: CmmGraph -> Entropy
-cfgEntropy = unimp "entropy"
+cfgEntropy = map traceBits . eventPaths
 
 unimp :: String -> a
 unimp s = error $ s ++ " not implemented"
