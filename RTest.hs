@@ -131,7 +131,6 @@ exitZero :: ExitCode
 
 exitZero = ExitSuccess
 combineExits ExitSuccess e = e
-combineExits e ExitSuccess = e
 combineExits e _ = e
 
 
