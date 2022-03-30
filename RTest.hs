@@ -11,8 +11,8 @@ import Control.Monad.IO.Class
 import System.Environment ( getArgs )
 import System.Exit
 
-import GHC hiding (Stmt)
-import GHC.Cmm
+import GHC hiding (Stmt, Match)
+import GHC.Cmm hiding (succ)
 import GHC.Cmm.ContFlowOpt
 import GHC.Cmm.Dominators
 import GHC.Cmm.Reducibility
@@ -111,7 +111,28 @@ compareWithEntropy :: BitConsumer Stmt Expr ()
                    -> BitConsumer Stmt Expr ()
                    -> Entropy
                    -> Outcome
-compareWithEntropy = unimp "cwe"
+compareWithEntropy a b bit_streams =
+   foldl add (Identical 0) $ map (compareRuns a b) bit_streams
+  where add (Identical k) Match = Identical (succ k)
+        add (Different ts k) Match = Different ts (succ k)
+        add (Identical k) (NoMatch pair) = Different [pair] k
+        add (Different ts k) (NoMatch pair) = Different (pair:ts) k
+
+data SingleComparison = Match
+                      | NoMatch (Trace, Trace)
+
+compareRuns :: BitConsumer Stmt Expr ()
+            -> BitConsumer Stmt Expr ()
+            -> [Bool]
+            -> SingleComparison
+compareRuns a b bits =
+    if and $ zipWith (==) aEvents bEvents then
+        Match
+    else
+        NoMatch (aEvents, bEvents)
+ where aEvents = pastEvents $ runWithBits a bits
+       bEvents = pastEvents $ runWithBits b bits
+
 
 cfgEntropy :: CmmGraph -> Entropy
 cfgEntropy = unimp "entropy"
