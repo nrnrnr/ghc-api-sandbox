@@ -12,6 +12,7 @@ module GHC.Cmm.Dominators
   , graphMap
   , gwdRPNumber
   , gwdDominatorsOf
+  , gwdDominatorTree
   , dominatorsMember
 
   , intersectDominators
@@ -23,6 +24,7 @@ import Data.Foldable()
 
 import qualified Data.IntMap.Strict as IM
 import qualified Data.IntSet as IS
+import qualified Data.Tree as Tree
 
 import qualified GHC.CmmToAsm.CFG.Dominators as LT
 
@@ -167,3 +169,13 @@ tabulate b f = listArray b $ map f $ range b
 
 unreachable :: a
 unreachable = panic "unreachable node in GraphWithDominators"
+
+gwdDominatorTree :: GraphWithDominators node -> Tree.Tree Label
+gwdDominatorTree g = subtreeAt (g_entry (gwd_graph g))
+  where subtreeAt label = Tree.Node label $ map subtreeAt $ children label
+        children l = mapFindWithDefault [] l child_map
+        child_map :: LabelMap [Label]
+        child_map = mapFoldlWithKey addParent mapEmpty $ gwd_dominators g
+          where addParent cm _ EntryNode = cm
+                addParent cm lbl (ImmediateDominator p _) =
+                    mapInsertWith (++) p [lbl] cm

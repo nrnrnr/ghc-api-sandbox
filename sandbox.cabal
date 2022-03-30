@@ -44,7 +44,7 @@ executable ptest
 
                      -- node splitting
                     GHC.Data.Graph.Collapse
-                    GHC.Cmm.Collapse
+--                    GHC.Cmm.Collapse
                     GHC.Cmm.Reducibility
 
 --                     -- testing
@@ -106,7 +106,6 @@ executable rtest
                     RunCmm
                     StgToCmmLite
 
-                    GHC.Cmm.Collapse
                     GHC.Cmm.Dominators
                     GHC.Cmm.Reducibility
                     GHC.Data.Graph.Collapse
