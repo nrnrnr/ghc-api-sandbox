@@ -1,18 +1,23 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections #-}
 
 
 module Main where
 
-import System.Environment ( getArgs )
+import Control.Monad
 import Control.Monad.IO.Class
+import System.Environment ( getArgs )
+import System.Exit
 
 import GHC hiding (Stmt)
 import GHC.Cmm
+import GHC.Cmm.ContFlowOpt
 import GHC.Cmm.Dominators
 import GHC.Cmm.Reducibility
 import GHC.Driver.Session
+import GHC.Platform
 import GHC.Types.Unique.Supply
 
 import qualified GHC.LanguageExtensions as LangExt
@@ -34,9 +39,30 @@ main = do
                          `xopt_set` LangExt.UnliftedDatatypes
                          `xopt_set` LangExt.DataKinds
         setSessionDynFlags dflags
-        -- let sdctx = initSDocContext dflags defaultUserStyle
         groups <- mapM loadPath files
-        liftIO $ putStrLn $ "loaded " ++ count groups "group"
+        let platform = targetPlatform dflags
+            labeled_groups = [(path, group)
+                                  | (path, groups) <- zip files groups, group <- groups]
+            run f = concat <$> mapM (concatMapGraphs platform (const f)) labeled_groups
+        liftIO $ do
+          reductions <- run testGraphReduction
+          mutilations <- run (return . testGraphMutilation)
+          results <- liftM2 (++) (mapM (analyze isIdentical) reductions)
+                                 (mapM (analyze isDifferent) mutilations)
+          exitWith $ foldl combineExits exitZero results
+
+
+concatMapGraphs :: Monad m
+             => Platform
+             -> (Platform -> CmmGraph -> m a)
+             -> (FilePath, CmmGroup)
+             -> m [(FilePath, a)]
+concatMapGraphs platform f (path, group) = concat <$> mapM (decl . cmmCfgOptsProc False) group
+  where decl (CmmData {}) = return []
+        decl (CmmProc _h _entry _registers graph) =
+            do a <- f platform graph
+               return [(path,a)]
+
 
 count :: [a] -> String -> String
 count xs thing = case length xs of
@@ -48,12 +74,20 @@ data Outcome = Identical { npaths :: Int }
              | Different { different :: [(Trace, Trace)], nsame :: Int }
 type Trace = [Event Stmt Expr]
 
+isDifferent, isIdentical :: Outcome -> Bool
+
+isDifferent (Different {}) = True
+isDifferent _ = False
+
+isIdentical (Identical {}) = True
+isIdentical _ = False
+
 testGraphReduction :: CmmGraph -> IO Outcome
 testGraphReduction original_graph = do
   reducible_graph <- fmap gwd_graph $ runUniqSM $
                      asReducible $ graphWithDominators original_graph
   return $ case reducibility (graphWithDominators original_graph) of
-    Reducible -> Identical 0
+    Reducible -> id Identical 0
     Irreducible ->
       compareWithEntropy (runcfg original_graph) (runcfg reducible_graph) $
       cfgEntropy reducible_graph
@@ -90,3 +124,29 @@ runUniqSM :: UniqSM a -> IO a
 runUniqSM m = do
   us <- mkSplitUniqSupply 'g'
   return (initUs_ us m)
+
+
+combineExits :: ExitCode -> ExitCode -> ExitCode
+exitZero :: ExitCode
+
+exitZero = ExitSuccess
+combineExits ExitSuccess e = e
+combineExits e ExitSuccess = e
+combineExits e _ = e
+
+
+analyze :: (Outcome -> Bool) -> (FilePath, Outcome) -> IO ExitCode
+analyze isGood (path, outcome) = do
+  putStrLn $ display $ path ++ ": " ++ case outcome of
+    Identical n -> show n ++ " paths are identical"
+    Different diffs nsame ->
+       if nsame == 0 then
+           "all " ++ show (length diffs) ++ " paths are different"
+       else
+           show (length diffs) ++ " of " ++ show (length diffs + nsame) ++ " paths are different"
+  if isGood outcome then
+      return ExitSuccess
+  else
+      return $ ExitFailure 1
+ where display s = if isGood outcome then s ++ ", as expectec"
+                   else "(FAULT!) " ++ s
