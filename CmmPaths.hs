@@ -4,7 +4,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 
 module CmmPaths
-  ( eventPaths
+  ( cmmPaths
   , cmmExits
   )
 where
@@ -25,8 +25,8 @@ import ControlTestMonad
 
 type CmmPath = [Event Stmt Expr]
 
-eventPaths :: CmmGraph -> [CmmPath]
-eventPaths g = map reverse $ pathsPrefixed (g_entry g) [] setEmpty
+cmmPaths :: CmmGraph -> [CmmPath]
+cmmPaths g = map reverse $ pathsPrefixed (g_entry g) [] setEmpty
   where pathsPrefixed :: Label -> CmmPath -> LabelSet -> [CmmPath]
             -- ^ returns a list of all _short_ paths that begin with (block : prefix),
             -- where a short path is one that contains at most one repeated label,
