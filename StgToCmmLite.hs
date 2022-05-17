@@ -166,10 +166,9 @@ cgTopBinding logger tmpfs cfg = \case
         -- CmmFileEmbed literal.  If binary blobs aren't supported,
         -- the threshold in `cfg` will be 0.
         -- See Note [Embedding large binary blobs] in GHC.CmmToAsm.Ppr
-        let bin_blob_threshold = stgToCmmBinBlobThresh cfg
-            isSmall  = fromIntegral (BS.length str) <= bin_blob_threshold
-            asString = bin_blob_threshold == 0 || isSmall
-
+        let asString = case stgToCmmBinBlobThresh cfg of
+              Just bin_blob_threshold -> fromIntegral (BS.length str) <= bin_blob_threshold
+              Nothing                -> True
             (lit,decl) = if asString
               then mkByteStringCLit label str
               else mkFileEmbedLit label $ unsafePerformIO $ do
@@ -218,8 +217,8 @@ mkModuleInit cost_centre_info this_mod hpc_info
 cgEnumerationTyCon :: TyCon -> FCode ()
 cgEnumerationTyCon tycon
   = do platform <- getPlatform
-       emitRODataLits (mkLocalClosureTableLabel (tyConName tycon) NoCafRefs)
-             [ CmmLabelOff (mkLocalClosureLabel (dataConName con) NoCafRefs)
+       emitRODataLits (mkClosureTableLabel (tyConName tycon) NoCafRefs)
+             [ CmmLabelOff (mkClosureLabel (dataConName con) NoCafRefs)
                            (tagForCon platform con)
              | con <- tyConDataCons tycon]
 

@@ -137,7 +137,7 @@ compareRuns a b bits =
 
 
 cfgEntropy :: CmmGraph -> Entropy
-cfgEntropy = map traceBits . eventPaths
+cfgEntropy = map traceBits . cmmPaths
 
 unimp :: String -> a
 unimp s = error $ s ++ " not implemented"
