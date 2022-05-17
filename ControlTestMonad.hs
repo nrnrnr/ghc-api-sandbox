@@ -11,15 +11,15 @@ where
 
 import GHC.Utils.Outputable
 
-class (MonadFail m) => ControlTestMonad stmt exp m where
-  evalPredicate :: exp -> m Bool
-  evalEnum      :: exp -> (Integer,Integer) -> m Integer
+class (MonadFail m) => ControlTestMonad stmt expr m where
+  evalPredicate :: expr -> m Bool
+  evalEnum      :: expr -> (Integer,Integer) -> m Integer
                    -- ^ range is half-open: includes low end but not high
   takeAction    :: stmt -> m ()
 
-data Event stmt exp = Predicate exp Bool
-                    | Switch exp (Integer,Integer) Integer
-                    | Action stmt
+data Event stmt expr = Action stmt
+                     | Predicate expr Bool
+                     | Switch expr (Integer,Integer) Integer
   deriving (Eq)
 
 instance (Outputable e, Outputable s) => Outputable (Event e s) where
