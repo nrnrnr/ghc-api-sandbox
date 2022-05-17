@@ -17,20 +17,18 @@ import GHC.Cmm.Dataflow.Block
 import GHC.Platform
 
 data Stmt = Stmt { s_label :: Label
-                 , _s_body :: Block CmmNode O O
                  , s_rendering :: String
                  }
 
 data Expr = Expr { e_label :: Label
-                 , _e_exp :: CmmExpr
                  , e_rendering :: String
                  }
 
 stmt :: Label -> Block CmmNode O O -> Stmt
-stmt lbl body = Stmt lbl body (showSDocUnsafe $ pdoc genericPlatform $ body)
+stmt lbl body = Stmt lbl (showSDocUnsafe $ pdoc genericPlatform $ body)
 
 expr :: Label -> CmmExpr -> Expr
-expr lbl e = Expr lbl e (showSDocUnsafe $ pdoc genericPlatform $ e)
+expr lbl e = Expr lbl (showSDocUnsafe $ pdoc genericPlatform $ e)
 
 instance Eq Stmt where
   s == s' = s_label s == s_label s' || s_rendering s == s_rendering s'
