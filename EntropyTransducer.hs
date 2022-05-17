@@ -25,7 +25,7 @@ rangeSelect (lo, limit) (bit : bits) =
 
 inverseRangeSelect :: (Integer, Integer) -> Integer -> [Bool]
 inverseRangeSelect (lo, limit) i
-    | lo == pred limit = if i == lo then [] else panic "inverseRangeSelect"
+    | lo == pred limit = if i == lo then [] else panic "fault in inverseRangeSelect"
     | otherwise = if i < mid then True : inverseRangeSelect (lo, mid) i
                   else False : inverseRangeSelect (mid, limit) i
   where mid = (lo + limit) `div` 2
