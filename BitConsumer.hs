@@ -6,6 +6,7 @@ module BitConsumer
   ( BitConsumer
   , ConsumptionResult(..)
   , runWithBits
+  , eventsFromBits
 
   --- below?
   , rangeSelect
@@ -59,6 +60,9 @@ runWithBits :: BitConsumer stmt exp a -> [Bool] -> ConsumptionResult stmt exp a
 -- ^ Run with Booleans determining decisions, return final
 -- state with oldest event first
 runWithBits m bits = reverseEvents $ fst $ unBC m bits []
+
+eventsFromBits :: BitConsumer stmt exp () -> [Bool] -> [Event stmt exp]
+eventsFromBits bc = pastEvents . runWithBits bc
 
 instance MonadFail (BitConsumer stmt exp) where
   fail msg = BC $ \bits past -> (Failed past msg, bits)
